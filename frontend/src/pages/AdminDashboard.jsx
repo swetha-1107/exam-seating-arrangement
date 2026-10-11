@@ -187,8 +187,8 @@ const AdminDashboard = () => {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1b365d', fontFamily: 'monospace' }}>
-                      {paper.courseCode}
+                    <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1b365d' }}>
+                      {paper.courseCode} – {paper.courseName}
                     </span>
                     <span
                       style={{
@@ -204,10 +204,7 @@ const AdminDashboard = () => {
                       {paper.type}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 500 }}>
-                    {paper.courseName}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
                     Programmes: <strong style={{ color: '#1b365d' }}>{paper.programmes?.join(', ') || 'All'}</strong>
                   </div>
                 </div>
@@ -240,7 +237,7 @@ const AdminDashboard = () => {
                 <tr>
                   <th>Slot / Date</th>
                   <th>Session Time</th>
-                  <th>Papers</th>
+                  <th>Papers Scheduled</th>
                   <th>Seating Status</th>
                   <th style={{ textAlign: 'right' }}>Action</th>
                 </tr>
@@ -258,9 +255,20 @@ const AdminDashboard = () => {
                       </div>
                     </td>
                     <td>
-                      <span className="badge badge-secondary" style={{ fontSize: '0.75rem' }}>
-                        {slot.papersCount} paper(s)
-                      </span>
+                      <div style={{ fontWeight: 700, color: '#1b365d', fontSize: '0.8rem', marginBottom: '2px' }}>
+                        {slot.papersCount} paper(s):
+                      </div>
+                      {slot.papers && slot.papers.length > 0 ? (
+                        <div style={{ fontSize: '0.75rem', color: '#334155' }}>
+                          {slot.papers.map((p, pIdx) => (
+                            <div key={pIdx} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '280px' }}>
+                              • <strong>{p.courseCode}</strong> – {p.courseName}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>No papers</span>
+                      )}
                     </td>
                     <td>{getStatusBadge(slot.seatingStatus)}</td>
                     <td style={{ textAlign: 'right' }}>

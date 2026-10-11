@@ -400,95 +400,183 @@ const generateSlotSeatingPlan = async (slotId, options = {}) => {
     await Invigilation.deleteMany({ slot: slot._id });
   }
 
-  // Fetch full student records grouped by paper and programme
+  // 1. Collect all distinct students for this slot
   const { papers } = await getSlotStudentsByPaper(slot._id);
+  const seenStudentIds = new Set();
+  const allStudentEntries = [];
 
-  // Flatten into student groups: each group is one (paper, programme) chunk, sorted by registerNumber
-  let studentGroups = [];
   for (const p of papers) {
-    // Group students by their programme
-    const byProg = new Map();
     for (const stu of p.students) {
-      const prog = stu.programme || stu.department || 'OTHER';
-      if (!byProg.has(prog)) byProg.set(prog, []);
-      byProg.get(prog).push(stu);
-    }
-
-    for (const [prog, stuList] of byProg.entries()) {
-      stuList.sort((a, b) => a.registerNumber.localeCompare(b.registerNumber));
-      studentGroups.push({
-        paperId: p.paper._id,
-        courseCode: p.courseCode,
-        courseName: p.courseName,
-        programme: prog,
-        students: stuList,
-        remainingIndex: 0,
-      });
+      const sId = stu._id.toString();
+      if (!seenStudentIds.has(sId)) {
+        seenStudentIds.add(sId);
+        const prog = (stu.programme || stu.department || 'OTHER').toUpperCase().trim();
+        allStudentEntries.push({
+          student: stu,
+          paperId: p.paper._id,
+          courseCode: p.courseCode,
+          courseName: p.courseName,
+          programme: prog,
+          registerNumber: (stu.registerNumber || '').toUpperCase().trim(),
+        });
+      }
     }
   }
 
-  // Sort groups by size descending so larger cohorts are paired smoothly
-  studentGroups.sort((a, b) => (b.students.length - b.remainingIndex) - (a.students.length - a.remainingIndex));
+  // 2. Group students by programme and sort each group by registerNumber ascending
+  const programmeGroupsMap = new Map();
+  for (const entry of allStudentEntries) {
+    if (!programmeGroupsMap.has(entry.programme)) {
+      programmeGroupsMap.set(entry.programme, []);
+    }
+    programmeGroupsMap.get(entry.programme).push(entry);
+  }
 
+  for (const [prog, stuList] of programmeGroupsMap.entries()) {
+    stuList.sort((a, b) => a.registerNumber.localeCompare(b.registerNumber));
+  }
+
+  // 3. Split programmes into a Left lane and Right lane (balanced counts)
+  const progGroups = Array.from(programmeGroupsMap.entries()).map(([prog, students]) => ({
+    prog,
+    students,
+    count: students.length,
+  }));
+  progGroups.sort((a, b) => b.count - a.count);
+
+  let leftProgrammes = [];
+  let rightProgrammes = [];
+  let leftCount = 0;
+  let rightCount = 0;
+
+  for (const pg of progGroups) {
+    if (leftCount <= rightCount) {
+      leftProgrammes.push(pg);
+      leftCount += pg.count;
+    } else {
+      rightProgrammes.push(pg);
+      rightCount += pg.count;
+    }
+  }
+
+  // Each lane is filled continuously programme by programme, in register order
+  let leftLane = [];
+  for (const pg of leftProgrammes) {
+    leftLane.push(...pg.students);
+  }
+
+  let rightLane = [];
+  for (const pg of rightProgrammes) {
+    rightLane.push(...pg.students);
+  }
+
+  // Balance lanes if count difference > 1
+  if (leftLane.length > rightLane.length + 1) {
+    const moveCount = Math.floor((leftLane.length - rightLane.length) / 2);
+    const moved = leftLane.splice(leftLane.length - moveCount, moveCount);
+    rightLane.push(...moved);
+  } else if (rightLane.length > leftLane.length + 1) {
+    const moveCount = Math.floor((rightLane.length - leftLane.length) / 2);
+    const moved = rightLane.splice(rightLane.length - moveCount, moveCount);
+    leftLane.push(...moved);
+  }
+
+  // 4. Bench i = Left[i] + Right[i]. Never put two students of the same programme on one bench (swap with later student if needed)
+  const maxBenches = Math.max(leftLane.length, rightLane.length);
+
+  for (let i = 0; i < maxBenches; i++) {
+    const sLeft = leftLane[i];
+    const sRight = rightLane[i];
+
+    if (sLeft && sRight && sLeft.programme === sRight.programme) {
+      // Find candidate in rightLane after index i with a different programme
+      let swapped = false;
+      for (let j = i + 1; j < rightLane.length; j++) {
+        if (rightLane[j] && rightLane[j].programme !== sLeft.programme) {
+          const temp = rightLane[i];
+          rightLane[i] = rightLane[j];
+          rightLane[j] = temp;
+          swapped = true;
+          break;
+        }
+      }
+
+      // If not found in rightLane, search forward in leftLane
+      if (!swapped) {
+        for (let j = i + 1; j < leftLane.length; j++) {
+          if (leftLane[j] && leftLane[j].programme !== sRight.programme) {
+            const temp = leftLane[i];
+            leftLane[i] = leftLane[j];
+            leftLane[j] = temp;
+            swapped = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Fill halls: bench rows x columns, 2 seats per bench (L and R)
+  // Track assigned students with a Set: a student must appear exactly once per slot (fix duplicate benches)
+  const assignedStudentIds = new Set();
   const newAssignments = [];
-  let samePaperBenchCount = 0;
+  let benchIndex = 0;
 
-  // Fill halls one by one
   for (const hall of selectedHalls) {
-    const benchRows = hall.benchRows || 3;
-    const benchColumns = hall.benchColumns || 5;
+    const benchRows = hall.benchRows || hall.rows || 4;
+    const benchColumns = hall.benchColumns || hall.columns || 4;
 
     for (let r = 0; r < benchRows; r++) {
       const rowLetter = getRowLetter(r);
 
       for (let c = 1; c <= benchColumns; c++) {
-        // Stop if all students are seated
-        const activeGroups = studentGroups.filter((g) => g.remainingIndex < g.students.length);
-        if (activeGroups.length === 0) break;
+        if (benchIndex >= maxBenches) break;
 
-        // BENCH PAIRING RULE:
-        // Seat Left (L) gets student from Group 1
-        activeGroups.sort((a, b) => (b.students.length - b.remainingIndex) - (a.students.length - a.remainingIndex));
-        const group1 = activeGroups[0];
-        const studentLeft = group1.students[group1.remainingIndex++];
+        const sLeft = leftLane[benchIndex];
+        const sRight = rightLane[benchIndex];
+        benchIndex++;
 
-        newAssignments.push({
-          slot: slot._id,
-          examId: slot._id,
-          paper: group1.paperId,
-          student: studentLeft._id,
-          studentId: studentLeft._id,
-          hall: hall._id,
-          hallId: hall._id,
-          benchRow: r,
-          benchColumn: c,
-          side: 'L',
-          seatLabel: `${rowLetter}${c}-L`,
-          seatNumber: `${rowLetter}${c}-L`,
-          examDate: slot.date,
-          startTime: slot.startTime,
-          endTime: slot.endTime,
-          status: 'DRAFT',
-          generatedAt: new Date(),
-        });
-
-        // Seat Right (R):
-        // Priority (a): Pick a student from a DIFFERENT paper/programme!
-        const differentGroups = studentGroups.filter(
-          (g) => g.remainingIndex < g.students.length && g.paperId.toString() !== group1.paperId.toString()
-        );
-
-        if (differentGroups.length > 0) {
-          differentGroups.sort((a, b) => (b.students.length - b.remainingIndex) - (a.students.length - a.remainingIndex));
-          const group2 = differentGroups[0];
-          const studentRight = group2.students[group2.remainingIndex++];
+        if (sLeft) {
+          const leftId = sLeft.student._id.toString();
+          if (assignedStudentIds.has(leftId)) {
+            throw new Error(`Integrity error: Duplicate student allocation detected for ${sLeft.registerNumber}`);
+          }
+          assignedStudentIds.add(leftId);
 
           newAssignments.push({
             slot: slot._id,
             examId: slot._id,
-            paper: group2.paperId,
-            student: studentRight._id,
-            studentId: studentRight._id,
+            paper: sLeft.paperId,
+            student: sLeft.student._id,
+            studentId: sLeft.student._id,
+            hall: hall._id,
+            hallId: hall._id,
+            benchRow: r,
+            benchColumn: c,
+            side: 'L',
+            seatLabel: `${rowLetter}${c}-L`,
+            seatNumber: `${rowLetter}${c}-L`,
+            examDate: slot.date,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+            status: 'DRAFT',
+            generatedAt: new Date(),
+          });
+        }
+
+        if (sRight) {
+          const rightId = sRight.student._id.toString();
+          if (assignedStudentIds.has(rightId)) {
+            throw new Error(`Integrity error: Duplicate student allocation detected for ${sRight.registerNumber}`);
+          }
+          assignedStudentIds.add(rightId);
+
+          newAssignments.push({
+            slot: slot._id,
+            examId: slot._id,
+            paper: sRight.paperId,
+            student: sRight.student._id,
+            studentId: sRight.student._id,
             hall: hall._id,
             hallId: hall._id,
             benchRow: r,
@@ -502,46 +590,18 @@ const generateSlotSeatingPlan = async (slotId, options = {}) => {
             status: 'DRAFT',
             generatedAt: new Date(),
           });
-        } else {
-          // Only one paper remains.
-          // Priority (b): If spare capacity exists in halls, leave second seat empty for anti-malpractice.
-          // Priority (c): Only pair same-paper students as last resort if remaining students exceed remaining benches.
-          const totalRemaining = studentGroups.reduce((acc, g) => acc + (g.students.length - g.remainingIndex), 0);
-          // Calculate remaining benches in this and future halls
-          // If capacity is tight, place student in Seat R
-          if (totalRemaining > 0 && group1.remainingIndex < group1.students.length) {
-            const studentRight = group1.students[group1.remainingIndex++];
-            samePaperBenchCount++;
-
-            newAssignments.push({
-              slot: slot._id,
-              examId: slot._id,
-              paper: group1.paperId,
-              student: studentRight._id,
-              studentId: studentRight._id,
-              hall: hall._id,
-              hallId: hall._id,
-              benchRow: r,
-              benchColumn: c,
-              side: 'R',
-              seatLabel: `${rowLetter}${c}-R`,
-              seatNumber: `${rowLetter}${c}-R`,
-              examDate: slot.date,
-              startTime: slot.startTime,
-              endTime: slot.endTime,
-              status: 'DRAFT',
-              generatedAt: new Date(),
-            });
-          }
         }
       }
+      if (benchIndex >= maxBenches) break;
     }
+    if (benchIndex >= maxBenches) break;
   }
 
   // Verify all students are seated
-  const unseatedCount = studentGroups.reduce((sum, g) => sum + (g.students.length - g.remainingIndex), 0);
-  if (unseatedCount > 0) {
-    throw new Error(`Could not allocate all students. ${unseatedCount} students remained unseated due to hall geometry.`);
+  if (assignedStudentIds.size !== allStudentEntries.length) {
+    throw new Error(
+      `Could not allocate all students. Allocated ${assignedStudentIds.size} of ${allStudentEntries.length} students due to hall geometry.`
+    );
   }
 
   // Insert generated seating plans
@@ -550,13 +610,14 @@ const generateSlotSeatingPlan = async (slotId, options = {}) => {
   // Update slot status
   await ExamSlot.findByIdAndUpdate(slot._id, { seatingStatus: 'DRAFT' });
 
+  const distinctHallsUsed = new Set(newAssignments.map((a) => a.hall.toString())).size;
+
   return {
     success: true,
-    message: `Successfully generated draft seating plan for ${newAssignments.length} students across ${selectedHalls.length} hall(s).`,
+    message: `Successfully generated draft seating plan for ${newAssignments.length} students across ${distinctHallsUsed} hall(s).`,
     totalSeated: newAssignments.length,
     totalAllocated: newAssignments.length,
-    hallsUsed: selectedHalls.length,
-    samePaperBenchCount,
+    hallsUsed: distinctHallsUsed,
     status: 'DRAFT',
   };
 };

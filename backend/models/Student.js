@@ -77,13 +77,16 @@ const studentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-studentSchema.pre('save', function (next) {
+studentSchema.pre('validate', function (next) {
   if (this.programme && !this.department) this.department = this.programme;
   if (this.department && !this.programme) this.programme = this.department;
   if (this.programmeId && !this.departmentId) this.departmentId = this.programmeId;
   if (this.departmentId && !this.programmeId) this.programmeId = this.departmentId;
   if (this.semester && !this.year) {
     this.year = Math.ceil(this.semester / 2);
+  }
+  if (!this.semester && this.year) {
+    this.semester = this.year * 2 - 1;
   }
   next();
 });

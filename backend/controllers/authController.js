@@ -12,29 +12,29 @@ const generateToken = (id) => {
 };
 
 // @desc    Auth user & get token
+// @desc    Auth user & get token
 // @route   POST /api/auth/login
 // @access  Public
 const login = async (req, res) => {
   try {
-    const { email, password, role } = req.body;
+    const { email, registerNumber, identifier, password, role } = req.body;
+    const loginInput = (identifier || registerNumber || email || '').trim();
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Please provide email and password' });
+    if (!loginInput || !password) {
+      return res.status(400).json({ message: 'Please provide Register Number or Email, and Password' });
     }
 
-    const cleanInput = email.trim();
-
-    // Match by email or referenceId (Reg No / Faculty ID)
+    // Match by email, referenceId (12-digit Reg No / Faculty ID), or name
     const user = await User.findOne({
       $or: [
-        { email: cleanInput.toLowerCase() },
-        { referenceId: cleanInput.toUpperCase() },
-        { name: cleanInput },
+        { email: loginInput.toLowerCase() },
+        { referenceId: loginInput.toUpperCase() },
+        { name: loginInput },
       ],
     });
 
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials or user not found' });
+      return res.status(401).json({ message: 'Invalid Register Number or Email' });
     }
 
     // Role check if provided
@@ -46,7 +46,7 @@ const login = async (req, res) => {
 
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid password' });
     }
 
     // Retrieve linked profile details
@@ -87,6 +87,7 @@ const register = async (req, res) => {
       role = 'student',
       registerNumber,
       facultyId,
+      programme,
       department,
       year,
       section,
@@ -104,7 +105,11 @@ const register = async (req, res) => {
     }
 
     const assignedRole = role.toLowerCase();
-    let referenceId = '';
+    const prog = (programme || department || 'IT').toUpperCase().trim();
+
+    // Generate compliant 12-digit register number if none supplied
+    const defaultRegNo = `310624${prog === 'CSE' ? '104' : prog === 'AIDS' ? '243' : prog === 'ECE' ? '106' : '205'}${Date.now().toString().slice(-3)}`;
+    const finalRegNo = (registerNumber || defaultRegNo).toUpperCase().trim();
 
     // Create User record
     const user = await User.create({
@@ -112,23 +117,27 @@ const register = async (req, res) => {
       email: cleanEmail,
       password,
       role: assignedRole,
-      referenceId: assignedRole === 'student' ? (registerNumber || '').toUpperCase().trim() : (facultyId || '').toUpperCase().trim(),
+      referenceId: assignedRole === 'student' ? finalRegNo : (facultyId || '').toUpperCase().trim(),
     });
 
     // Create linked Student or Faculty profile
     let profile = null;
     if (assignedRole === 'student') {
-      const reg = (registerNumber || `23${(department || 'IT').toUpperCase()}${Date.now().toString().slice(-4)}`).toUpperCase().trim();
-      user.referenceId = reg;
+      user.referenceId = finalRegNo;
       await user.save();
+
+      const studentYear = Number(year) || 3;
+      const studentSemester = studentYear * 2 - 1;
 
       profile = await Student.create({
         userId: user._id,
-        registerNumber: reg,
+        registerNumber: finalRegNo,
         name: user.name,
         email: cleanEmail,
-        department: (department || 'IT').toUpperCase().trim(),
-        year: Number(year) || 3,
+        programme: prog,
+        department: prog,
+        year: studentYear,
+        semester: studentSemester,
         section: (section || 'A').toUpperCase().trim(),
       });
     } else if (assignedRole === 'faculty') {
@@ -141,7 +150,7 @@ const register = async (req, res) => {
         facultyId: facId,
         name: user.name,
         email: cleanEmail,
-        department: (department || 'IT').toUpperCase().trim(),
+        department: prog,
         phone: (phone || '9876543210').trim(),
         isActive: true,
       });

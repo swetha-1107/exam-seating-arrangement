@@ -200,6 +200,12 @@ const ReportsPage = () => {
               <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', fontWeight: 600 }}>
                 {selectedSlot?.series?.name || 'Continuous Assessment Test II (CAT II)'} — Date: <u>{selectedSlot?.date}</u> &nbsp;|&nbsp; Time: <u>{selectedSlot?.startTime} – {selectedSlot?.endTime}</u>
               </p>
+              {selectedSlot?.papers && selectedSlot.papers.length > 0 && (
+                <div style={{ marginTop: '0.45rem', fontSize: '0.82rem', color: '#1b365d', fontWeight: 600 }}>
+                  <strong>Scheduled Papers:</strong>{' '}
+                  {selectedSlot.papers.map((p) => `${p.courseCode} – ${p.courseName}`).join(' | ')}
+                </div>
+              )}
             </div>
 
             {/* Notice Table with Contiguous Register Ranges */}

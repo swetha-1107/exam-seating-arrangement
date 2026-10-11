@@ -35,13 +35,19 @@ const listSlots = async (req, res) => {
           seatingStatus: slot.seatingStatus || 'NOT_GENERATED',
           status: slot.status,
           papersCount: papers.length,
-          papers: papers.map((p) => ({
-            _id: p._id,
-            courseCode: p.course?.courseCode || p.courseCode,
-            courseName: p.course?.courseName || p.courseName,
-            type: p.type,
-            programmes: p.programmes.map((pr) => pr.programme?.code || pr.departmentCode || pr.programme?.name),
-          })),
+          papers: papers.map((p) => {
+            const courseCode = p.course?.courseCode || p.course?.subjectCode || p.courseCode || '';
+            const courseName = p.course?.courseName || p.course?.subjectName || p.courseName || '';
+            const displayName = courseCode && courseName ? `${courseCode} – ${courseName}` : (courseCode || courseName || 'Paper');
+            return {
+              _id: p._id,
+              courseCode,
+              courseName,
+              displayName,
+              type: p.type,
+              programmes: p.programmes.map((pr) => pr.programme?.code || pr.departmentCode || pr.programme?.name),
+            };
+          }),
           seatCount,
           hallsCount: distinctHalls.length,
         };

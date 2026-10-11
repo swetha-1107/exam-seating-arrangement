@@ -45,12 +45,18 @@ const getDashboardStats = async (req, res) => {
           seatingStatus: slot.seatingStatus || 'NOT_GENERATED',
           status: slot.status,
           papersCount: papers.length,
-          papers: papers.map((p) => ({
-            courseCode: p.course?.courseCode || p.courseCode,
-            courseName: p.course?.courseName || p.courseName,
-            type: p.type,
-            programmes: p.programmes.map((pr) => pr.programme?.code || pr.departmentCode),
-          })),
+          papers: papers.map((p) => {
+            const courseCode = p.course?.courseCode || p.course?.subjectCode || p.courseCode || '';
+            const courseName = p.course?.courseName || p.course?.subjectName || p.courseName || '';
+            const displayName = courseCode && courseName ? `${courseCode} – ${courseName}` : (courseCode || courseName || 'Paper');
+            return {
+              courseCode,
+              courseName,
+              displayName,
+              type: p.type,
+              programmes: p.programmes.map((pr) => pr.programme?.code || pr.departmentCode),
+            };
+          }),
           seatCount,
           hallsCount,
         };

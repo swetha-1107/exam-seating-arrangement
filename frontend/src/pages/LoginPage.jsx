@@ -58,8 +58,8 @@ const LoginPage = () => {
       setIdentifier('FAC101');
       setPassword('faculty123');
     } else if (selectedRole === 'student') {
-      setIdentifier('23IT001');
-      setPassword('student123');
+      setIdentifier('310624205001');
+      setPassword('password123');
     }
   };
 
@@ -80,12 +80,12 @@ const LoginPage = () => {
       setPassword('faculty123');
     } else if (demoType === 'student_it') {
       setRole('student');
-      setIdentifier('23IT001');
-      setPassword('student123');
+      setIdentifier('310624205001');
+      setPassword('password123');
     } else if (demoType === 'student_cse') {
       setRole('student');
-      setIdentifier('23CSE001');
-      setPassword('student123');
+      setIdentifier('310624104001');
+      setPassword('password123');
     }
   };
 
@@ -135,6 +135,7 @@ const LoginPage = () => {
         password: regPassword.trim(),
         role: regRole,
         department,
+        programme: department,
         registerNumber: regRole === 'student' ? registerNumber.trim() : undefined,
         facultyId: regRole === 'faculty' ? facultyId.trim() : undefined,
         year: regRole === 'student' ? year : undefined,
@@ -286,7 +287,7 @@ const LoginPage = () => {
                     className="form-control"
                     placeholder={
                       role === 'student'
-                        ? 'e.g. 23IT001 or student email'
+                        ? 'e.g. 310624205001 or student email'
                         : role === 'faculty'
                         ? 'e.g. FAC101 or faculty email'
                         : 'admin@exam.edu'
@@ -368,7 +369,7 @@ const LoginPage = () => {
                   type="button"
                   className="demo-pill"
                   onClick={() => handleQuickDemo('student_it')}
-                  title="Student (23IT001 / student123)"
+                  title="Student (310624205001 / password123)"
                 >
                   Student (IT)
                 </button>
@@ -376,7 +377,7 @@ const LoginPage = () => {
                   type="button"
                   className="demo-pill"
                   onClick={() => handleQuickDemo('student_cse')}
-                  title="Student (23CSE001 / student123)"
+                  title="Student (310624104001 / password123)"
                 >
                   Student (CSE)
                 </button>
@@ -472,7 +473,7 @@ const LoginPage = () => {
                       <input
                         type="text"
                         className="form-control"
-                        placeholder="e.g. 23IT009"
+                        placeholder="e.g. 310624205281"
                         value={registerNumber}
                         onChange={(e) => setRegisterNumber(e.target.value.toUpperCase())}
                         required

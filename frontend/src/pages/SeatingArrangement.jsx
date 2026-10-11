@@ -347,7 +347,7 @@ const SeatingArrangement = () => {
                   gap: '0.3rem',
                 }}
               >
-                <strong>{p.courseCode}:</strong> {p.studentCount} students ({p.programmes?.join(', ') || 'All'})
+                <strong>{p.courseCode} – {p.courseName}:</strong> {p.studentCount} students ({p.programmes?.join(', ') || 'All'})
               </span>
             ))}
           </div>

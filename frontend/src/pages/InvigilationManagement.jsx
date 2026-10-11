@@ -377,50 +377,55 @@ const InvigilationManagement = () => {
             </thead>
             <tbody>
               {duties.length > 0 ? (
-                duties.map((duty) => (
-                  <tr key={duty._id}>
-                    <td>
-                      <div style={{ fontWeight: 700, color: '#0f172a' }}>
-                        {duty.facultyId?.name || 'Assigned Faculty'}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        Dept: {duty.facultyId?.department}
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 800, color: '#1b365d' }}>
-                        {duty.facultyId?.facultyId}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{duty.examId?.examName}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', fontFamily: 'JetBrains Mono' }}>
-                        {duty.examId?.examCode}
-                      </div>
-                    </td>
-                    <td>
-                      <span className="badge badge-blue" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
-                        Hall {duty.hallId?.hallNumber}
-                      </span>
-                    </td>
-                    <td>{duty.examId?.examDate}</td>
-                    <td>
-                      <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.85rem' }}>
-                        {duty.examId?.startTime} - {duty.examId?.endTime}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        onClick={() => handleDeleteDuty(duty._id, duty.facultyId?.name)}
-                        className="btn btn-danger-outline btn-sm"
-                        title="Unassign Duty"
-                      >
-                        <Trash2 size={14} />
-                        <span>Unassign</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                duties.map((duty) => {
+                  const fac = duty.faculty || duty.facultyId;
+                  const hall = duty.hall || duty.hallId;
+                  const exam = duty.examId || duty.slot;
+                  return (
+                    <tr key={duty._id}>
+                      <td>
+                        <div style={{ fontWeight: 700, color: '#0f172a' }}>
+                          {fac?.name || 'Assigned Faculty'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          Dept: {fac?.department}
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 800, color: '#1b365d' }}>
+                          {fac?.facultyId}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{exam?.examName || exam?.notes || 'Examination'}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontFamily: 'JetBrains Mono' }}>
+                          {exam?.examCode || ''}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="badge badge-blue" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                          Hall {hall?.hallCode || hall?.hallNumber}
+                        </span>
+                      </td>
+                      <td>{duty.examDate || exam?.date || exam?.examDate}</td>
+                      <td>
+                        <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.85rem' }}>
+                          {duty.startTime || exam?.startTime} - {duty.endTime || exam?.endTime}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => handleDeleteDuty(duty._id, fac?.name)}
+                          className="btn btn-danger-outline btn-sm"
+                          title="Unassign Duty"
+                        >
+                          <Trash2 size={14} />
+                          <span>Unassign</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan="7">

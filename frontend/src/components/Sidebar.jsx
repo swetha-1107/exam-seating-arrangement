@@ -33,7 +33,6 @@ const Sidebar = () => {
     { to: '/admin/students', label: 'Students', icon: Users },
     { to: '/admin/faculty', label: 'Faculty', icon: GraduationCap },
     { to: '/admin/exams', label: 'Exam Schedule', icon: CalendarDays },
-    { to: '/admin/registrations', label: 'Exam Registrations', icon: ClipboardList },
     { to: '/admin/halls', label: 'Halls', icon: Building2 },
     { to: '/admin/faculty-availability', label: 'Faculty Availability', icon: Clock },
     { to: '/admin/seating', label: 'Seating Allocation', icon: Grid3X3 },

@@ -13,7 +13,6 @@ import DepartmentSubjectManagement from './pages/DepartmentSubjectManagement';
 import StudentManagement from './pages/StudentManagement';
 import FacultyManagement from './pages/FacultyManagement';
 import ExamManagement from './pages/ExamManagement';
-import ExamRegistrationManagement from './pages/ExamRegistrationManagement';
 import HallManagement from './pages/HallManagement';
 import FacultyAvailabilityManagement from './pages/FacultyAvailabilityManagement';
 import SeatingArrangement from './pages/SeatingArrangement';
@@ -75,7 +74,6 @@ function App() {
             <Route path="students" element={<StudentManagement />} />
             <Route path="faculty" element={<FacultyManagement />} />
             <Route path="exams" element={<ExamManagement />} />
-            <Route path="registrations" element={<ExamRegistrationManagement />} />
             <Route path="halls" element={<HallManagement />} />
             <Route path="faculty-availability" element={<FacultyAvailabilityManagement />} />
             <Route path="seating" element={<SeatingArrangement />} />

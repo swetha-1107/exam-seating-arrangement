@@ -10,7 +10,6 @@ const pageTitleMap = {
   '/admin/students': 'Student Master Directory',
   '/admin/faculty': 'Faculty Directory',
   '/admin/exams': 'Examination Timetable Management',
-  '/admin/registrations': 'Student Exam Registrations & Eligibility',
   '/admin/halls': 'Examination Halls & Venues',
   '/admin/faculty-availability': 'Faculty Availability Monitoring',
   '/admin/seating': 'Automatic Seating Plan Generation',

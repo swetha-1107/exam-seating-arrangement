@@ -11,6 +11,7 @@ import {
   Grid3X3,
   UserCheck,
   BookOpen,
+  Upload,
 } from 'lucide-react';
 import api from '../services/api';
 import Modal from '../components/Modal';
@@ -30,6 +31,9 @@ const ExamManagement = () => {
 
   // Modals & Forms
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [bulkError, setBulkError] = useState('');
   const [editingExam, setEditingExam] = useState(null);
   const [formData, setFormData] = useState({
     subjectId: '',
@@ -46,6 +50,36 @@ const ExamManagement = () => {
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setCsvText(event.target.result);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleBulkUpload = async (e) => {
+    e.preventDefault();
+    setBulkError('');
+    if (!csvText.trim()) {
+      setBulkError('Please paste CSV content or select a .csv file to upload.');
+      return;
+    }
+
+    try {
+      const res = await api.post('/exams/import-timetable-csv', { csvText });
+      setSuccess(res.data.message || 'Timetable imported successfully!');
+      setIsBulkModalOpen(false);
+      setCsvText('');
+      fetchData();
+      setTimeout(() => setSuccess(''), 5000);
+    } catch (err) {
+      setBulkError(err.message || 'Bulk upload failed');
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -186,8 +220,12 @@ const ExamManagement = () => {
           <p>Easwari Engineering College • Schedule examination sessions, map departments, and prevent timetable slot conflicts.</p>
         </div>
         <div className="header-actions">
-          <button onClick={openAddModal} className="btn btn-primary">
-            <Plus size={16} />
+          <button onClick={() => setIsBulkModalOpen(true)} className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <Upload size={15} />
+            <span>CSV Timetable Import</span>
+          </button>
+          <button onClick={openAddModal} className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <Plus size={15} />
             <span>Schedule Examination</span>
           </button>
         </div>
@@ -521,6 +559,65 @@ const ExamManagement = () => {
                 <option value="Cancelled">Cancelled</option>
               </select>
             </div>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Timetable CSV Bulk Import Modal */}
+      <Modal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        title="Import Timetable from CSV"
+        maxWidth="600px"
+      >
+        <form onSubmit={handleBulkUpload}>
+          {bulkError && <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>{bulkError}</div>}
+
+          <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 0.75rem 0' }}>
+            Upload a <code>.csv</code> file or paste timetable rows below. First line must contain column headers.
+          </p>
+
+          <div style={{ background: '#f8fafc', padding: '0.65rem', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '0.85rem', fontSize: '0.74rem', fontFamily: 'monospace' }}>
+            <strong>Header format:</strong><br />
+            Date, Start Time, End Time, Course Code, Course Name, Programmes, Paper Type<br />
+            <strong>Example row:</strong><br />
+            2026-10-15, 09:30, 11:00, 2311ITC501T, Software Engineering, IT, core
+          </div>
+
+          <div style={{ marginBottom: '0.85rem' }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+              Upload .csv File:
+            </label>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleFileUpload}
+              className="form-control"
+              style={{ fontSize: '0.82rem' }}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+              Or Paste CSV Text:
+            </label>
+            <textarea
+              rows={8}
+              placeholder="Date, Start Time, End Time, Course Code, Course Name, Programmes, Paper Type&#10;2026-10-15, 09:30, 11:00, 2311ITC501T, Software Engineering, IT, core"
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+              className="form-control"
+              style={{ fontFamily: 'monospace', fontSize: '0.78rem', whiteSpace: 'pre' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+            <button type="button" onClick={() => setIsBulkModalOpen(false)} className="btn btn-secondary btn-sm">
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary btn-sm">
+              Import Timetable
+            </button>
           </div>
         </form>
       </Modal>

@@ -6,8 +6,15 @@ const {
   createExam,
   updateExam,
   deleteExam,
+  getMyExams,
+  importTimetable,
 } = require('../controllers/examController');
 const { protect, authorizeRoles } = require('../middleware/authMiddleware');
+
+router.get('/my-exams', protect, authorizeRoles('student', 'admin'), getMyExams);
+
+router.post('/import-timetable', protect, authorizeRoles('admin'), importTimetable);
+router.post('/import-timetable-csv', protect, authorizeRoles('admin'), importTimetable);
 
 router.route('/')
   .get(protect, getExams)

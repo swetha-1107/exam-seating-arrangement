@@ -2,26 +2,26 @@ const invigilationService = require('../services/invigilationService');
 const Invigilation = require('../models/Invigilation');
 const Faculty = require('../models/Faculty');
 
-// @desc    Pre-Assignment Analysis of faculty availability and conflicts
-// @route   GET /api/invigilation/analyze/:examId
+// @desc    Pre-Assignment Analysis for a slot
+// @route   GET /api/invigilation/analyze-slot/:slotId
 // @access  Private (Admin)
-const analyzeInvigilation = async (req, res) => {
+const analyzeSlotInvigilation = async (req, res) => {
   try {
-    const { examId } = req.params;
-    const analysis = await invigilationService.analyzeInvigilationRequirements(examId);
+    const { slotId } = req.params;
+    const analysis = await invigilationService.analyzeSlotInvigilation(slotId);
     res.json(analysis);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 };
 
-// @desc    Auto Assign Invigilators based on availability & timetable constraints
-// @route   POST /api/invigilation/auto-assign/:examId
+// @desc    Auto Assign Invigilators for a slot
+// @route   POST /api/invigilation/assign-slot/:slotId
 // @access  Private (Admin)
-const autoAssignInvigilators = async (req, res) => {
+const autoAssignSlotInvigilators = async (req, res) => {
   try {
-    const { examId } = req.params;
-    const result = await invigilationService.autoAssignInvigilators(examId);
+    const { slotId } = req.params;
+    const result = await invigilationService.autoAssignSlotInvigilators(slotId);
     res.status(201).json({
       message: `Successfully assigned ${result.totalAssigned} invigilator(s) based on faculty availability constraints.`,
       result,
@@ -31,25 +31,40 @@ const autoAssignInvigilators = async (req, res) => {
   }
 };
 
-// @desc    Get all invigilation duties (filterable by exam, date, faculty)
+// @desc    Get all invigilation duties (filterable by slotId, examId, facultyId, date)
 // @route   GET /api/invigilation
 // @access  Private
 const getInvigilationDuties = async (req, res) => {
   try {
-    const { examId, facultyId, date } = req.query;
+    const { slotId, examId, facultyId, date } = req.query;
     let query = {};
 
-    if (examId) query.examId = examId;
-    if (facultyId) query.facultyId = facultyId;
+    if (slotId) {
+      query.$or = [{ slot: slotId }, { examId: slotId }];
+    } else if (examId) {
+      query.$or = [{ examId: examId }, { slot: examId }];
+    }
+
+    if (facultyId) {
+      query.$or = [{ faculty: facultyId }, { facultyId: facultyId }];
+    }
 
     let duties = await Invigilation.find(query)
+      .populate('slot')
       .populate('examId')
+      .populate('faculty')
       .populate('facultyId')
+      .populate('hall')
       .populate('hallId')
       .sort({ assignedAt: -1 });
 
     if (date) {
-      duties = duties.filter((d) => d.examId && d.examId.examDate === date);
+      duties = duties.filter(
+        (d) =>
+          d.examDate === date ||
+          (d.slot && d.slot.date === date) ||
+          (d.examId && d.examId.examDate === date)
+      );
     }
 
     res.json(duties);
@@ -71,8 +86,12 @@ const getMyDuties = async (req, res) => {
       return res.status(404).json({ message: 'Faculty profile not linked to this account.' });
     }
 
-    const duties = await Invigilation.find({ facultyId: faculty._id })
+    const duties = await Invigilation.find({
+      $or: [{ faculty: faculty._id }, { facultyId: faculty._id }],
+    })
+      .populate('slot')
       .populate('examId')
+      .populate('hall')
       .populate('hallId')
       .sort({ assignedAt: -1 });
 
@@ -103,10 +122,37 @@ const deleteInvigilationDuty = async (req, res) => {
   }
 };
 
+// Legacy backward compatibility
+const analyzeInvigilation = async (req, res) => {
+  try {
+    const { examId } = req.params;
+    const analysis = await invigilationService.analyzeInvigilationRequirements(examId);
+    res.json(analysis);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+const autoAssignInvigilators = async (req, res) => {
+  try {
+    const { examId } = req.params;
+    const result = await invigilationService.autoAssignInvigilators(examId);
+    res.status(201).json({
+      message: `Successfully assigned ${result.totalAssigned} invigilator(s) based on faculty availability constraints.`,
+      result,
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
 module.exports = {
-  analyzeInvigilation,
-  autoAssignInvigilators,
+  analyzeSlotInvigilation,
+  autoAssignSlotInvigilators,
   getInvigilationDuties,
   getMyDuties,
   deleteInvigilationDuty,
+  // Legacy
+  analyzeInvigilation,
+  autoAssignInvigilators,
 };

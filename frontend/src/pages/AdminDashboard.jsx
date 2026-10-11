@@ -2,21 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
-  CalendarDays,
-  Building2,
   GraduationCap,
-  Clock,
-  CheckCircle,
-  UserPlus,
-  PlusCircle,
-  Grid3X3,
+  Building2,
   UserCheck,
-  Activity,
-  AlertTriangle,
-  Radio,
+  CalendarDays,
+  Clock,
+  ArrowRight,
   CheckCircle2,
-  XCircle,
-  Clock3,
+  AlertCircle,
+  FileText,
+  ShieldCheck,
+  BookOpen,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import api from '../services/api';
@@ -47,257 +43,241 @@ const AdminDashboard = () => {
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '4rem' }}>
-        <p style={{ color: '#64748b' }}>Loading Easwari Examination Control Center...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="alert alert-error">
-        <AlertTriangle size={18} />
-        <span>{error}</span>
+        <p style={{ color: '#1b365d', fontWeight: 600 }}>Loading Easwari Examination Administration Dashboard...</p>
       </div>
     );
   }
 
   const counts = stats?.counts || {};
-  const upcomingExams = stats?.upcomingExams || [];
-  const activities = stats?.recentActivities || [];
+  const nextSlot = stats?.nextSlot || null;
+  const upcomingSlots = stats?.upcomingSlots || [];
   const facultyAvailability = stats?.facultyAvailability || [];
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'PUBLISHED':
+        return (
+          <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <CheckCircle2 size={12} /> Published
+          </span>
+        );
+      case 'DRAFT':
+        return (
+          <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <Clock size={12} /> Draft
+          </span>
+        );
+      default:
+        return (
+          <span className="badge badge-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+            <AlertCircle size={12} /> Not Generated
+          </span>
+        );
+    }
+  };
 
   return (
     <div>
-      <div className="page-header">
+      {/* Institutional Header */}
+      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
-          <h1>Examination Control Center</h1>
-          <p>Easwari Engineering College • Real-time overview of college exams, seating capacity, and invigilator availability.</p>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#627d98', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Autonomous Examination Cell • Easwari Engineering College
+          </span>
+          <h1 style={{ marginTop: '0.2rem', color: '#1b365d', fontSize: '1.45rem' }}>
+            Examination Administration Dashboard
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
+            Real-time oversight of examination slots, course papers, hall utilization, and seating status.
+          </p>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="metrics-grid">
+      {error && (
+        <div className="alert alert-danger" style={{ marginBottom: '1.25rem' }}>
+          {error}
+        </div>
+      )}
+
+      {/* Primary Statistics Cards */}
+      <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
         <StatCard
           title="Total Students"
-          value={counts.totalStudents}
+          value={counts.totalStudents?.toLocaleString() || '0'}
           icon={Users}
           color="blue"
         />
         <StatCard
-          title="Total Exams"
-          value={counts.totalExams}
-          icon={CalendarDays}
+          title="Academic Programmes"
+          value={counts.totalProgrammes || '8'}
+          icon={GraduationCap}
           color="purple"
         />
         <StatCard
-          title="Total Halls"
-          value={counts.totalHalls}
+          title="Examination Halls"
+          value={counts.totalHalls || '0'}
           icon={Building2}
-          color="amber"
-        />
-        <StatCard
-          title="Total Faculty"
-          value={counts.totalFaculty}
-          icon={GraduationCap}
-          color="teal"
-        />
-        <StatCard
-          title="Upcoming Exams"
-          value={counts.upcomingExams}
-          icon={Clock}
-          color="blue"
-        />
-        <StatCard
-          title="Occupied Halls"
-          value={counts.occupiedHalls}
-          icon={CheckCircle}
           color="emerald"
         />
+        <StatCard
+          title="Faculty Members"
+          value={counts.totalFaculty || '0'}
+          icon={UserCheck}
+          color="amber"
+        />
       </div>
 
-      {/* Quick Administrative Actions Bar */}
-      <div className="quick-actions-bar">
-        <h3>Institutional Quick Actions</h3>
-        <div className="quick-actions-list">
-          <button
-            onClick={() => navigate('/admin/students', { state: { openAdd: true } })}
-            className="btn btn-secondary btn-sm"
-          >
-            <UserPlus size={15} />
-            <span>Add Student</span>
-          </button>
-          <button
-            onClick={() => navigate('/admin/exams', { state: { openAdd: true } })}
-            className="btn btn-secondary btn-sm"
-          >
-            <PlusCircle size={15} />
-            <span>Schedule Exam</span>
-          </button>
-          <button
-            onClick={() => navigate('/admin/halls', { state: { openAdd: true } })}
-            className="btn btn-secondary btn-sm"
-          >
-            <Building2 size={15} />
-            <span>Add Hall</span>
-          </button>
-          <button
-            onClick={() => navigate('/admin/faculty', { state: { openAdd: true } })}
-            className="btn btn-secondary btn-sm"
-          >
-            <GraduationCap size={15} />
-            <span>Add Faculty</span>
-          </button>
-          <button
-            onClick={() => navigate('/admin/seating')}
-            className="btn btn-primary btn-sm"
-          >
-            <Grid3X3 size={15} />
-            <span>Automatic Seating</span>
-          </button>
-          <button
-            onClick={() => navigate('/admin/invigilation')}
-            className="btn btn-success btn-sm"
-          >
-            <UserCheck size={15} />
-            <span>Assign Invigilators</span>
-          </button>
-        </div>
-      </div>
+      {/* Next Examination Slot Spotlight */}
+      {nextSlot && (
+        <div className="card" style={{ marginBottom: '1.5rem', borderLeft: '4px solid #1b365d' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, background: '#e2e8f0', color: '#334155', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                  NEXT UPCOMING SLOT
+                </span>
+                {getStatusBadge(nextSlot.seatingStatus)}
+              </div>
+              <h3 style={{ margin: '0.25rem 0 0.2rem 0', color: '#1b365d', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CalendarDays size={18} color="#1b365d" />
+                {nextSlot.date} &nbsp;|&nbsp;
+                <Clock size={16} color="#64748b" />
+                {nextSlot.startTime} – {nextSlot.endTime}
+              </h3>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
+                {nextSlot.series?.name || 'Continuous Assessment Test II'} • {nextSlot.notes || 'All Applicable Programmes'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => navigate(`/admin/seating?slotId=${nextSlot._id}`)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <span>Manage Seating</span>
+                <ArrowRight size={14} />
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => navigate('/admin/reports')}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <FileText size={14} />
+                <span>Print Notice</span>
+              </button>
+            </div>
+          </div>
 
-      {/* Live Faculty Availability Status Overview Widget */}
-      <div className="card" style={{ marginBottom: '1.5rem' }}>
-        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Radio size={18} color="#1b365d" />
-            <span>Faculty Invigilation Availability & Live Duty Status</span>
-          </h3>
-          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-            Real-time synchronization with faculty availability declarations
-          </span>
-        </div>
-
-        <div style={{ padding: '1.25rem 1.5rem' }}>
-          {facultyAvailability.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
-              {facultyAvailability.map((f) => (
+          <div style={{ marginTop: '0.75rem', background: '#f8fafc', padding: '0.85rem', borderRadius: '6px' }}>
+            <h4 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: '0.5rem', letterSpacing: '0.04em' }}>
+              Papers Scheduled in this Slot ({nextSlot.papers?.length || 0})
+            </h4>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.65rem' }}>
+              {nextSlot.papers?.map((paper, idx) => (
                 <div
-                  key={f._id}
+                  key={idx}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0.85rem 1rem',
-                    borderRadius: '8px',
+                    background: '#fff',
                     border: '1px solid #e2e8f0',
-                    backgroundColor:
-                      f.badgeType === 'available'
-                        ? '#f0fdf4'
-                        : f.badgeType === 'unavailable'
-                        ? '#fef2f2'
-                        : '#fefce8',
+                    borderRadius: '6px',
+                    padding: '0.6rem 0.75rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.2rem',
                   }}
                 >
-                  <div>
-                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem' }}>
-                      {f.name}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontFamily: 'JetBrains Mono' }}>
-                      {f.facultyId} • {f.department}
-                    </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1b365d', fontFamily: 'monospace' }}>
+                      {paper.courseCode}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        padding: '0.1rem 0.35rem',
+                        borderRadius: '3px',
+                        background: paper.type === 'common' ? '#e0f2fe' : paper.type === 'elective' ? '#fef3c7' : '#f1f5f9',
+                        color: paper.type === 'common' ? '#0369a1' : paper.type === 'elective' ? '#b45309' : '#475569',
+                      }}
+                    >
+                      {paper.type}
+                    </span>
                   </div>
-
-                  <div>
-                    {f.badgeType === 'available' && (
-                      <span className="badge badge-emerald" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <CheckCircle2 size={12} />
-                        <span>🟢 Available</span>
-                      </span>
-                    )}
-                    {f.badgeType === 'unavailable' && (
-                      <span className="badge badge-rose" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <XCircle size={12} />
-                        <span>🔴 Not Available</span>
-                      </span>
-                    )}
-                    {f.badgeType === 'assigned' && (
-                      <span className="badge badge-amber" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Clock3 size={12} />
-                        <span>🟡 Already Assigned ({f.assignedHalls})</span>
-                      </span>
-                    )}
+                  <div style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 500 }}>
+                    {paper.courseName}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Programmes: <strong style={{ color: '#1b365d' }}>{paper.programmes?.join(', ') || 'All'}</strong>
                   </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No active faculty members registered in system.</p>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Grid: Upcoming Exams & Recent Activity */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
-        {/* Upcoming Exams Table */}
-        <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-header">
-            <h3 className="card-title">Upcoming Anna University Examinations</h3>
+      {/* Examination Slots Grid & Faculty Availability */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
+        {/* Examination Slots Schedule */}
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ margin: 0, color: '#1b365d', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <CalendarDays size={18} color="#1b365d" />
+              Examination Slots Schedule
+            </h3>
             <button
-              onClick={() => navigate('/admin/exams')}
               className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.75rem' }}
+              onClick={() => navigate('/admin/exams')}
             >
-              View Timetable
+              Manage Timetable
             </button>
           </div>
 
           <div className="table-responsive">
-            <table className="data-table">
+            <table className="table" style={{ width: '100%', fontSize: '0.85rem' }}>
               <thead>
                 <tr>
-                  <th>Course Code</th>
-                  <th>Exam Subject</th>
-                  <th>Date</th>
-                  <th>Time Slot</th>
-                  <th>Dept</th>
-                  <th>Status</th>
+                  <th>Slot / Date</th>
+                  <th>Session Time</th>
+                  <th>Papers</th>
+                  <th>Seating Status</th>
+                  <th style={{ textAlign: 'right' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {upcomingExams.length > 0 ? (
-                  upcomingExams.map((exam) => (
-                    <tr key={exam._id}>
-                      <td>
-                        <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 700, color: '#1b365d' }}>
-                          {exam.examCode || 'EXAM'}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{exam.examName}</td>
-                      <td>{exam.examDate}</td>
-                      <td style={{ fontSize: '0.8rem', color: '#64748b', fontFamily: 'JetBrains Mono' }}>
-                        {exam.startTime} - {exam.endTime}
-                      </td>
-                      <td>
-                        <span className="badge badge-blue">{exam.department}</span>
-                      </td>
-                      <td>
-                        <span
-                          className={`badge ${
-                            exam.status === 'Completed'
-                              ? 'badge-emerald'
-                              : exam.status === 'Cancelled'
-                              ? 'badge-rose'
-                              : 'badge-amber'
-                          }`}
-                        >
-                          {exam.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
+                {upcomingSlots.map((slot) => (
+                  <tr key={slot._id}>
+                    <td>
+                      <div style={{ fontWeight: 600, color: '#1b365d' }}>{slot.date}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{slot.notes || slot.series?.code}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontFamily: 'monospace', fontWeight: 500 }}>
+                        {slot.startTime} – {slot.endTime}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="badge badge-secondary" style={{ fontSize: '0.75rem' }}>
+                        {slot.papersCount} paper(s)
+                      </span>
+                    </td>
+                    <td>{getStatusBadge(slot.seatingStatus)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => navigate(`/admin/seating?slotId=${slot._id}`)}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem' }}
+                      >
+                        Seating
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {upcomingSlots.length === 0 && (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
-                      No upcoming examinations scheduled.
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b' }}>
+                      No examination slots found. Add slots via Timetable.
                     </td>
                   </tr>
                 )}
@@ -306,61 +286,64 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Recent Activity Feed */}
-        <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-header">
-            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Activity size={18} color="#1b365d" />
-              <span>Recent Institutional Activity Log</span>
+        {/* Real Faculty Availability Widget */}
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ margin: 0, color: '#1b365d', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <UserCheck size={18} color="#1b365d" />
+              Faculty Availability
             </h3>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => navigate('/admin/invigilation')}
+            >
+              Invigilation
+            </button>
           </div>
 
-          <div style={{ padding: '1.25rem 1.5rem' }}>
-            {activities.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {activities.map((act) => (
-                  <div
-                    key={act.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '0.85rem',
-                      paddingBottom: '0.85rem',
-                      borderBottom: '1px solid #f1f5f9',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 34,
-                        height: 34,
-                        borderRadius: '50%',
-                        backgroundColor: act.type === 'seating' ? '#eff6ff' : '#ecfdf5',
-                        color: act.type === 'seating' ? '#1b365d' : '#059669',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {act.type === 'seating' ? <Grid3X3 size={16} /> : <UserCheck size={16} />}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>
-                        {act.title}
-                      </h4>
-                      <p style={{ fontSize: '0.8rem', color: '#64748b' }}>{act.description}</p>
-                      <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                        {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })},{' '}
-                        {new Date(act.timestamp).toLocaleDateString()}
-                      </span>
-                    </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: '420px', overflowY: 'auto' }}>
+            {facultyAvailability.map((f) => (
+              <div
+                key={f._id}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0.5rem 0.65rem',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  background: f.badgeType === 'unavailable' ? '#fef2f2' : '#ffffff',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1b365d' }}>
+                    {f.name}
                   </div>
-                ))}
+                  <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                    {f.department} • {f.facultyId}
+                  </div>
+                </div>
+                <div>
+                  {f.badgeType === 'unavailable' ? (
+                    <span className="badge badge-danger" style={{ fontSize: '0.72rem' }}>
+                      Not Available
+                    </span>
+                  ) : f.badgeType === 'assigned' ? (
+                    <span className="badge badge-warning" style={{ fontSize: '0.72rem' }}>
+                      Assigned ({f.assignedDuties})
+                    </span>
+                  ) : (
+                    <span className="badge badge-success" style={{ fontSize: '0.72rem' }}>
+                      Available
+                    </span>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                No recent activity recorded yet. Generate a seating plan or assign invigilators to see logs.
-              </div>
+            ))}
+            {facultyAvailability.length === 0 && (
+              <p style={{ color: '#64748b', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>
+                No active faculty records found.
+              </p>
             )}
           </div>
         </div>

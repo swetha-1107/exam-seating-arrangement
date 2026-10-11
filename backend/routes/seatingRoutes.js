@@ -1,23 +1,36 @@
 const express = require('express');
 const router = express.Router();
 const {
+  listSlots,
+  analyzeSlotSeating,
+  generateSlotSeating,
+  publishSlotSeating,
+  getSlotSeating,
+  clearSlotSeating,
+  getMySeating,
+  // Legacy
   analyzeSeating,
   generateSeatingPlan,
   getSeatingByExam,
   clearSeatingByExam,
-  getMySeating,
 } = require('../controllers/seatingController');
 const { protect, authorizeRoles } = require('../middleware/authMiddleware');
 
 // Student-only view: authenticated student sees only their own seating!
 router.get('/my-seating', protect, authorizeRoles('student', 'admin'), getMySeating);
 
-// Admin-only analysis, generation, and clearance
+// Slot-based seating endpoints
+router.get('/slots', protect, listSlots);
+router.get('/analyze-slot/:slotId', protect, authorizeRoles('admin'), analyzeSlotSeating);
+router.post('/generate-slot/:slotId', protect, authorizeRoles('admin'), generateSlotSeating);
+router.post('/publish-slot/:slotId', protect, authorizeRoles('admin'), publishSlotSeating);
+router.get('/slot/:slotId', protect, getSlotSeating);
+router.delete('/slot/:slotId', protect, authorizeRoles('admin'), clearSlotSeating);
+
+// Legacy exam-based endpoints
 router.get('/analyze/:examId', protect, authorizeRoles('admin'), analyzeSeating);
 router.post('/generate/:examId', protect, authorizeRoles('admin'), generateSeatingPlan);
 router.delete('/:examId', protect, authorizeRoles('admin'), clearSeatingByExam);
-
-// View seating for an exam
 router.get('/:examId', protect, getSeatingByExam);
 
 module.exports = router;

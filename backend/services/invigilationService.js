@@ -1,36 +1,37 @@
+const ExamSeries = require('../models/ExamSeries');
+const ExamSlot = require('../models/ExamSlot');
 const Exam = require('../models/Exam');
-const Subject = require('../models/Subject');
-const Department = require('../models/Department');
 const Hall = require('../models/Hall');
 const Faculty = require('../models/Faculty');
 const FacultyAvailability = require('../models/FacultyAvailability');
 const SeatingPlan = require('../models/SeatingPlan');
 const Invigilation = require('../models/Invigilation');
-const { doExamsOverlap } = require('../utils/conflictChecker');
+const { resolveSlot } = require('./seatingService');
+const { doIntervalsOverlap } = require('../utils/conflictChecker');
 
 /**
- * Pre-Assignment Analysis: analyzes invigilation constraints,
- * checks faculty availability, timetable clashes, and determines readiness.
+ * Pre-Assignment Analysis for an Exam Slot:
+ * Analyzes invigilation constraints, checks faculty availability, timetable clashes,
+ * fair duty count, and determines readiness.
  */
-const analyzeInvigilationRequirements = async (examId) => {
-  const exam = await Exam.findById(examId);
-  if (!exam) {
-    throw new Error('Examination not found');
-  }
+const analyzeSlotInvigilation = async (slotOrExamId) => {
+  const slot = await resolveSlot(slotOrExamId);
+  if (!slot) throw new Error('Exam slot not found');
 
-  // 1. Find all distinct halls utilized in the seating plan for this exam
-  const distinctHallIds = await SeatingPlan.distinct('hallId', { examId: exam._id });
+  // 1. Find all distinct halls utilized in the seating plan for this slot
+  const distinctHallIds = await SeatingPlan.distinct('hall', { slot: slot._id });
   const halls = await Hall.find({ _id: { $in: distinctHallIds } });
   const invigilatorsRequired = halls.length;
 
   if (invigilatorsRequired === 0) {
     return {
-      exam,
+      slot,
+      halls: [],
       hallsCount: 0,
       invigilatorsRequired: 0,
       canAssign: false,
       statusText: 'CANNOT ASSIGN',
-      warnings: ['No seating plan has been generated for this examination yet. Generate the seating plan first.'],
+      warnings: ['No seating plan has been generated for this examination slot yet. Generate the seating plan first.'],
       eligibleFaculty: [],
     };
   }
@@ -38,39 +39,34 @@ const analyzeInvigilationRequirements = async (examId) => {
   // 2. Fetch all active faculty
   const allActiveFaculty = await Faculty.find({ isActive: true });
 
-  // 3. Check Explicit Availability Records for this date & time
-  // Query FacultyAvailability for date and overlapping time interval
-  const availabilityRecords = await FacultyAvailability.find({
-    date: exam.examDate,
-  });
-
+  // 3. Check explicit availability declarations for this date & slot time
+  const availabilityRecords = await FacultyAvailability.find({ date: slot.date });
   const explicitlyUnavailableIds = new Set();
-  const explicitlyAvailableIds = new Set();
 
   availabilityRecords.forEach((rec) => {
-    // Check if slot overlaps with exam
     if (rec.status === 'Not Available') {
-      explicitlyUnavailableIds.add(rec.facultyId.toString());
-    } else if (rec.status === 'Available') {
-      explicitlyAvailableIds.add(rec.facultyId.toString());
+      if (doIntervalsOverlap(slot.startTime, slot.endTime, rec.startTime, rec.endTime)) {
+        explicitlyUnavailableIds.add(rec.facultyId.toString());
+      }
     }
   });
 
   // 4. Timetable & Multiple Duty Conflict Check:
-  // Find all other exams overlapping in date & time
-  const otherExams = await Exam.find({
-    _id: { $ne: exam._id },
-    examDate: exam.examDate,
+  // Find other slots overlapping in date and time
+  const otherSlots = await ExamSlot.find({
+    _id: { $ne: slot._id },
+    date: slot.date,
   });
-  const overlappingExams = otherExams.filter((other) => doExamsOverlap(exam, other));
-  const overlappingExamIds = overlappingExams.map((e) => e._id);
+  const overlappingSlots = otherSlots.filter((os) =>
+    doIntervalsOverlap(slot.startTime, slot.endTime, os.startTime, os.endTime)
+  );
+  const overlappingSlotIds = overlappingSlots.map((s) => s._id);
 
-  // Find faculty already booked for overlapping exams
+  // Find faculty already booked for overlapping slots
   const busyDuties = await Invigilation.find({
-    examId: { $in: overlappingExamIds },
-  }).populate('facultyId').populate('examId');
-
-  const busyFacultyIds = new Set(busyDuties.map((d) => d.facultyId?._id?.toString()));
+    slot: { $in: overlappingSlotIds },
+  });
+  const busyFacultyIds = new Set(busyDuties.map((d) => (d.faculty || d.facultyId).toString()));
 
   // 5. Filter for genuinely eligible faculty:
   // Must be active, NOT explicitly marked 'Not Available', and NOT busy in an overlapping duty
@@ -87,14 +83,15 @@ const analyzeInvigilationRequirements = async (examId) => {
 
   if (eligibleFaculty.length < invigilatorsRequired) {
     canAssign = false;
+    const missing = invigilatorsRequired - eligibleFaculty.length;
     warnings.push(
-      `Insufficient faculty available. Required: ${invigilatorsRequired} invigilator(s) for ${halls.length} hall(s), but only ${eligibleFaculty.length} eligible faculty available.`
+      `Faculty shortage: ${invigilatorsRequired} invigilators required for ${halls.length} hall(s), but only ${eligibleFaculty.length} eligible faculty available (${missing} missing).`
     );
   }
 
   if (explicitlyUnavailableIds.size > 0) {
     warnings.push(
-      `${explicitlyUnavailableIds.size} faculty member(s) marked 'Not Available' for this examination date.`
+      `${explicitlyUnavailableIds.size} faculty member(s) declared 'Not Available' for this time interval.`
     );
   }
 
@@ -105,7 +102,7 @@ const analyzeInvigilationRequirements = async (examId) => {
   }
 
   return {
-    exam,
+    slot,
     halls,
     hallsCount: halls.length,
     invigilatorsRequired,
@@ -121,51 +118,79 @@ const analyzeInvigilationRequirements = async (examId) => {
 };
 
 /**
- * Automatic Invigilator Assignment:
- * System assigns 1 eligible, non-conflicting faculty per hall based on availability & timetable constraints.
+ * Automatic Invigilator Assignment per Slot:
+ * Assigns 1 eligible, non-conflicting faculty per hall with fair duty spreading.
  */
-const autoAssignInvigilators = async (examId) => {
-  const analysis = await analyzeInvigilationRequirements(examId);
+const autoAssignSlotInvigilators = async (slotOrExamId) => {
+  const analysis = await analyzeSlotInvigilation(slotOrExamId);
 
   if (!analysis.canAssign) {
-    const errorMsg = analysis.warnings.join(' ') || 'Cannot assign invigilators due to availability or timetable conflicts.';
+    const errorMsg = analysis.warnings.join(' ') || 'Cannot assign invigilators due to faculty shortage or timetable conflicts.';
     throw new Error(errorMsg);
   }
 
-  const { exam, halls, eligibleFaculty } = analysis;
+  const { slot, halls, eligibleFaculty } = analysis;
 
-  // Clear previous assignments for THIS exam to allow seamless re-assignment
-  await Invigilation.deleteMany({ examId: exam._id });
+  // Clear previous assignments for THIS slot to allow seamless re-assignment
+  await Invigilation.deleteMany({ slot: slot._id });
+
+  // Fair duty spreading: count how many duties each faculty member has across the series
+  const facultyDutyCounts = await Invigilation.aggregate([
+    { $group: { _id: '$faculty', count: { $sum: 1 } } },
+  ]);
+  const dutyCountMap = new Map();
+  facultyDutyCounts.forEach((dc) => dutyCountMap.set(dc._id.toString(), dc.count));
+
+  // Sort eligible faculty by least duties assigned
+  eligibleFaculty.sort((a, b) => {
+    const countA = dutyCountMap.get(a._id.toString()) || 0;
+    const countB = dutyCountMap.get(b._id.toString()) || 0;
+    return countA - countB;
+  });
 
   const assignments = [];
   for (let i = 0; i < halls.length; i++) {
     const assignedFaculty = eligibleFaculty[i];
     assignments.push({
-      examId: exam._id,
+      slot: slot._id,
+      examId: slot._id,
+      hall: halls[i]._id,
       hallId: halls[i]._id,
+      faculty: assignedFaculty._id,
       facultyId: assignedFaculty._id,
-      examDate: exam.examDate,
-      session: exam.session || 'FN',
+      examDate: slot.date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
       assignedAt: new Date(),
     });
   }
 
   await Invigilation.insertMany(assignments);
 
-  // Return populated assignments
-  const populated = await Invigilation.find({ examId: exam._id })
-    .populate('facultyId')
-    .populate('hallId')
-    .populate('examId');
+  const populated = await Invigilation.find({ slot: slot._id })
+    .populate('faculty')
+    .populate('hall')
+    .populate('slot');
 
   return {
-    exam,
+    slot,
     totalAssigned: assignments.length,
     assignments: populated,
   };
 };
 
+// Backwards-compatibility wrappers
+const analyzeInvigilationRequirements = async (examId) => {
+  return analyzeSlotInvigilation(examId);
+};
+
+const autoAssignInvigilators = async (examId) => {
+  return autoAssignSlotInvigilators(examId);
+};
+
 module.exports = {
+  analyzeSlotInvigilation,
+  autoAssignSlotInvigilators,
   analyzeInvigilationRequirements,
   autoAssignInvigilators,
 };

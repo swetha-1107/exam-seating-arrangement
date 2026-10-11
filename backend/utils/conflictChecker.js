@@ -2,17 +2,20 @@
  * Time and Conflict Checking Utilities
  */
 
-// Converts HH:mm (24hr or with AM/PM) into minutes from 00:00
+// Converts HH:mm (24hr, 12hr with AM/PM, or dot-notation e.g. 2.00 PM) into minutes from 00:00
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr) return 0;
-  const str = timeStr.trim();
+  const str = String(timeStr).trim();
   const isPM = /pm/i.test(str);
   const isAM = /am/i.test(str);
 
-  const cleanTime = str.replace(/am|pm/gi, '').trim();
+  // Replace dots in time e.g. "2.00" -> "2:00"
+  const cleanTime = str.replace(/am|pm/gi, '').trim().replace('.', ':');
   const parts = cleanTime.split(':');
   let hours = parseInt(parts[0], 10);
   const minutes = parts[1] ? parseInt(parts[1], 10) : 0;
+
+  if (isNaN(hours)) return 0;
 
   if (isPM && hours < 12) {
     hours += 12;
@@ -20,7 +23,7 @@ const parseTimeToMinutes = (timeStr) => {
     hours = 0;
   }
 
-  return hours * 60 + minutes;
+  return hours * 60 + (isNaN(minutes) ? 0 : minutes);
 };
 
 // Check if two time intervals overlap (assuming both on the same date)
@@ -38,7 +41,12 @@ const doIntervalsOverlap = (start1, end1, start2, end2) => {
 const formatDateStr = (dateVal) => {
   if (!dateVal) return '';
   if (typeof dateVal === 'string') {
-    // If it's ISO like 2026-10-05T00:00:00.000Z, extract date part
+    // If it's already YYYY-MM-DD or DD.MM.YYYY
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateVal)) return dateVal;
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(dateVal)) {
+      const [d, m, y] = dateVal.split('.');
+      return `${y}-${m}-${d}`;
+    }
     return dateVal.split('T')[0];
   }
   const d = new Date(dateVal);
@@ -48,13 +56,13 @@ const formatDateStr = (dateVal) => {
   return `${year}-${month}-${day}`;
 };
 
-// Check if two exams overlap in date and time
+// Check if two exams/slots overlap in date and time
 const doExamsOverlap = (exam1, exam2) => {
   if (exam1._id && exam2._id && exam1._id.toString() === exam2._id.toString()) {
-    return false; // same exam does not conflict with itself
+    return false;
   }
-  const date1 = formatDateStr(exam1.examDate);
-  const date2 = formatDateStr(exam2.examDate);
+  const date1 = formatDateStr(exam1.date || exam1.examDate);
+  const date2 = formatDateStr(exam2.date || exam2.examDate);
 
   if (date1 !== date2) {
     return false;

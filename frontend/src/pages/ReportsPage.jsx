@@ -6,303 +6,474 @@ import {
   Building2,
   Grid3X3,
   UserCheck,
+  CheckCircle2,
+  Layers,
+  Clock,
 } from 'lucide-react';
 import api from '../services/api';
+import SeatGrid from '../components/SeatGrid';
 
 const ReportsPage = () => {
-  const [reportType, setReportType] = useState('seating'); // 'seating' or 'invigilation'
-  const [exams, setExams] = useState([]);
-  const [selectedExamId, setSelectedExamId] = useState('');
-  const [seatingRecords, setSeatingRecords] = useState([]);
-  const [invigilationRecords, setInvigilationRecords] = useState([]);
+  const [reportType, setReportType] = useState('notice'); // 'notice', 'chart', 'timetable', 'invigilation'
+  const [slots, setSlots] = useState([]);
+  const [selectedSlotId, setSelectedSlotId] = useState('');
+  const [slotPlan, setSlotPlan] = useState(null);
+  const [invigilationDuties, setInvigilationDuties] = useState([]);
+  const [selectedHallIdx, setSelectedHallIdx] = useState(0);
   const [loading, setLoading] = useState(false);
 
+  // Fetch slots
   useEffect(() => {
-    const fetchExams = async () => {
+    const fetchSlots = async () => {
       try {
-        const res = await api.get('/exams');
-        setExams(res.data);
+        const res = await api.get('/seating/slots');
+        setSlots(res.data);
         if (res.data.length > 0) {
-          setSelectedExamId(res.data[0]._id);
+          setSelectedSlotId(res.data[0]._id);
         }
       } catch (err) {
-        console.error('Failed to load exams for reports:', err);
+        console.error('Failed to load slots for reports:', err);
       }
     };
-    fetchExams();
+    fetchSlots();
   }, []);
 
+  // Fetch slot plan and invigilation duties
   useEffect(() => {
-    const fetchReportData = async () => {
-      if (!selectedExamId) return;
+    const loadReportData = async () => {
+      if (!selectedSlotId) return;
       setLoading(true);
       try {
-        if (reportType === 'seating') {
-          const res = await api.get(`/seating/${selectedExamId}`);
-          const flattened = [];
-          if (res.data?.halls) {
-            res.data.halls.forEach((hGroup) => {
-              hGroup.seats.forEach((s) => {
-                flattened.push({
-                  hallNumber: hGroup.hallDetails.hallNumber,
-                  building: hGroup.hallDetails.building,
-                  seatNumber: s.seatNumber,
-                  registerNumber: s.student?.registerNumber,
-                  name: s.student?.name,
-                  department: s.student?.department,
-                  year: s.student?.year,
-                  section: s.student?.section,
-                });
-              });
-            });
-          }
-          flattened.sort((a, b) => a.hallNumber.localeCompare(b.hallNumber) || a.seatNumber.localeCompare(b.seatNumber));
-          setSeatingRecords(flattened);
-        } else {
-          const res = await api.get('/invigilation', {
-            params: { examId: selectedExamId },
-          });
-          setInvigilationRecords(res.data);
-        }
+        const [planRes, invigRes] = await Promise.all([
+          api.get(`/seating/slot/${selectedSlotId}`),
+          api.get('/invigilation', { params: { slotId: selectedSlotId } }),
+        ]);
+
+        setSlotPlan(planRes.data);
+        setInvigilationDuties(invigRes.data);
+        setSelectedHallIdx(0);
       } catch (err) {
-        console.error('Error fetching report data:', err);
+        console.error('Failed to load report data:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchReportData();
-  }, [reportType, selectedExamId]);
+    loadReportData();
+  }, [selectedSlotId]);
 
   const handlePrint = () => {
     window.print();
   };
 
-  const selectedExam = exams.find((e) => e._id === selectedExamId);
+  const selectedSlot = slots.find((s) => s._id === selectedSlotId);
+  const halls = slotPlan?.halls || [];
+  const activeHall = halls[selectedHallIdx] || null;
 
   return (
     <div>
-      <div className="page-header no-print">
+      {/* Top Bar (Hidden during Print) */}
+      <div className="page-header no-print" style={{ marginBottom: '1.25rem' }}>
         <div>
-          <h1>Examination Reports & Roster Generator</h1>
-          <p>Easwari Engineering College • Generate and print official master seating charts and invigilation duty registers.</p>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#627d98', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Autonomous Examination Cell • Easwari Engineering College
+          </span>
+          <h1 style={{ marginTop: '0.2rem', color: '#1b365d', fontSize: '1.45rem' }}>
+            Official Examination Reports &amp; Notices
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
+            Generate and print verified examination notices, hall charts, timetables, and invigilation duty rosters.
+          </p>
         </div>
         <div className="header-actions">
-          <button onClick={handlePrint} className="btn btn-primary">
+          <button onClick={handlePrint} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <Printer size={16} />
-            <span>Print Official Document</span>
+            <span>Print Official Notice</span>
           </button>
         </div>
       </div>
 
       {/* Report Controls (Hidden during Print) */}
-      <div className="card no-print" style={{ marginBottom: '2rem' }}>
-        <div className="filter-bar" style={{ padding: '1.25rem 1.5rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.3rem' }}>
-              Select Document Type:
-            </label>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                type="button"
-                className={`btn btn-sm ${reportType === 'seating' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setReportType('seating')}
-              >
-                <Grid3X3 size={14} />
-                <span>Master Seating Roster</span>
-              </button>
-              <button
-                type="button"
-                className={`btn btn-sm ${reportType === 'invigilation' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setReportType('invigilation')}
-              >
-                <UserCheck size={14} />
-                <span>Invigilation Duty Chart</span>
-              </button>
-            </div>
+      <div className="card no-print" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Report Type Selector */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setReportType('notice')}
+              className={`btn btn-sm ${reportType === 'notice' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <FileText size={14} />
+              <span>1. Seating Arrangement Notice</span>
+            </button>
+            <button
+              onClick={() => setReportType('chart')}
+              className={`btn btn-sm ${reportType === 'chart' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <Grid3X3 size={14} />
+              <span>2. Hall Bench Chart</span>
+            </button>
+            <button
+              onClick={() => setReportType('timetable')}
+              className={`btn btn-sm ${reportType === 'timetable' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <CalendarDays size={14} />
+              <span>3. Timetable Notice</span>
+            </button>
+            <button
+              onClick={() => setReportType('invigilation')}
+              className={`btn btn-sm ${reportType === 'invigilation' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <UserCheck size={14} />
+              <span>4. Invigilation Roster</span>
+            </button>
           </div>
 
-          <div style={{ flex: 1, minWidth: '280px' }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.3rem' }}>
-              Select Examination:
+          {/* Slot Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
+              Slot:
             </label>
             <select
+              value={selectedSlotId}
+              onChange={(e) => setSelectedSlotId(e.target.value)}
               className="form-control"
-              value={selectedExamId}
-              onChange={(e) => setSelectedExamId(e.target.value)}
+              style={{ minWidth: '280px', fontSize: '0.85rem' }}
             >
-              {exams.map((exam) => (
-                <option key={exam._id} value={exam._id}>
-                  [{exam.examCode || 'EXAM'}] {exam.examName} ({exam.examDate} • Dept: {exam.department})
+              {slots.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.date} ({s.startTime} - {s.endTime}) [{s.seatingStatus || 'NOT_GENERATED'}]
                 </option>
               ))}
             </select>
           </div>
         </div>
-      </div>
 
-      {/* Official Easwari Engineering College Printable Letterhead */}
-      <div className="print-header" style={{ textAlign: 'center', marginBottom: '1.5rem', borderBottom: '2px solid #1b365d', paddingBottom: '1rem' }}>
-        <img
-          src="/college_logo.jpg"
-          alt="Easwari Engineering College Crest"
-          style={{ width: 68, height: 68, objectFit: 'contain', margin: '0 auto 0.5rem auto' }}
-        />
-        <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#1b365d', textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-          EASWARI ENGINEERING COLLEGE
-        </h2>
-        <div style={{ fontSize: '0.85rem', color: '#7a1c1d', fontWeight: 700, margin: '2px 0' }}>
-          (Autonomous Institution • Affiliated to Anna University, Chennai)
-        </div>
-        <div style={{ fontSize: '0.8rem', color: '#475569' }}>
-          Bharathi Salai, Ramapuram, Chennai – 600 089, Tamil Nadu, India
-        </div>
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginTop: '0.6rem', textDecoration: 'underline' }}>
-          OFFICE OF THE CONTROLLER OF EXAMINATIONS
-        </h3>
-        <p style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1b365d', margin: '4px 0 0 0' }}>
-          {reportType === 'seating' ? 'OFFICIAL CANDIDATE SEATING ALLOCATION ROSTER' : 'OFFICIAL INVIGILATION DUTY ATTENDANCE REGISTER'}
-        </p>
-
-        {selectedExam && (
-          <div style={{ marginTop: '0.5rem', padding: '0.4rem 0.8rem', background: '#f8fafc', borderRadius: '6px', display: 'inline-block', fontSize: '0.85rem', border: '1px solid #e2e8f0' }}>
-            <span>Course: <strong>{selectedExam.examCode} - {selectedExam.examName}</strong></span>
-            <span style={{ margin: '0 8px' }}>|</span>
-            <span>Date: <strong>{selectedExam.examDate}</strong></span>
-            <span style={{ margin: '0 8px' }}>|</span>
-            <span>Time: <strong>{selectedExam.startTime} - {selectedExam.endTime}</strong></span>
-            <span style={{ margin: '0 8px' }}>|</span>
-            <span>Dept: <strong>{selectedExam.department}</strong> (Sem {selectedExam.semester})</span>
+        {/* Hall Sub-selector for Bench Chart */}
+        {reportType === 'chart' && halls.length > 0 && (
+          <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>Select Hall:</span>
+            {halls.map((hg, idx) => (
+              <button
+                key={hg.hall._id}
+                onClick={() => setSelectedHallIdx(idx)}
+                className={`btn btn-sm ${selectedHallIdx === idx ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.8rem' }}
+              >
+                {hg.hall.hallCode || hg.hall.hallNumber} ({hg.seatsCount} seats)
+              </button>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Report Table Card */}
-      <div className="card">
-        <div className="card-header no-print">
-          <h3 className="card-title">
-            {reportType === 'seating' ? 'Student Seating Arrangement Roster' : 'Faculty Invigilator Hall Duties'}
-          </h3>
-          <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
-            Total Records: {reportType === 'seating' ? seatingRecords.length : invigilationRecords.length}
-          </span>
+      {/* PRINTABLE DOCUMENT AREA */}
+      <div className="printable-document" style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '2.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+        {/* Institutional Letterhead Header */}
+        <div style={{ textAlign: 'center', borderBottom: '2px solid #1b365d', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+          <h2 style={{ margin: 0, color: '#1b365d', fontSize: '1.4rem', fontWeight: 800, letterSpacing: '0.04em' }}>
+            EASWARI ENGINEERING COLLEGE
+          </h2>
+          <div style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 600, margin: '0.15rem 0' }}>
+            (An Autonomous Institution, Affiliated to Anna University Chennai)
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+            Bharathi Salai, Ramapuram, Chennai - 600 089, Tamil Nadu
+          </div>
+          <div style={{ fontSize: '0.9rem', color: '#1b365d', fontWeight: 800, marginTop: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            OFFICE OF THE CONTROLLER OF EXAMINATIONS
+          </div>
         </div>
 
-        <div className="table-responsive">
-          {reportType === 'seating' ? (
-            <table className="data-table">
+        {/* ======================================================== */}
+        {/* REPORT 1: SEATING ARRANGEMENT NOTICE                    */}
+        {/* ======================================================== */}
+        {reportType === 'notice' && (
+          <div>
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontSize: '1.15rem', textTransform: 'uppercase', fontWeight: 800, textDecoration: 'underline' }}>
+                NOTICE TO CANDIDATES: SEATING ARRANGEMENT
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', fontWeight: 600 }}>
+                {selectedSlot?.series?.name || 'Continuous Assessment Test II (CAT II)'} — Date: <u>{selectedSlot?.date}</u> &nbsp;|&nbsp; Time: <u>{selectedSlot?.startTime} – {selectedSlot?.endTime}</u>
+              </p>
+            </div>
+
+            {/* Notice Table with Contiguous Register Ranges */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginBottom: '2rem' }}>
               <thead>
-                <tr>
-                  <th>S.No</th>
-                  <th>Hall No</th>
-                  <th>Desk / Seat</th>
-                  <th>Register Number</th>
-                  <th>Student Candidate Name</th>
-                  <th>Department</th>
-                  <th>Year & Sec</th>
-                  <th>Candidate Signature</th>
+                <tr style={{ background: '#f1f5f9', borderTop: '2px solid #1b365d', borderBottom: '2px solid #1b365d' }}>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>S.No</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Hall Code</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Block &amp; Floor</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Programme</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Register Number Range</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '3rem' }}>
-                      Generating official roster...
-                    </td>
-                  </tr>
-                ) : seatingRecords.length > 0 ? (
-                  seatingRecords.map((rec, idx) => (
-                    <tr key={`${rec.hallNumber}-${rec.seatNumber}-${idx}`}>
-                      <td style={{ textAlign: 'center' }}>{idx + 1}</td>
-                      <td>
-                        <strong>Hall {rec.hallNumber}</strong>
+                {(() => {
+                  let serial = 1;
+                  let grandTotal = 0;
+                  const rows = [];
+
+                  halls.forEach((hg) => {
+                    const progMap = {};
+                    hg.seats.forEach((st) => {
+                      const p = st.student?.programme || 'OTHER';
+                      if (!progMap[p]) progMap[p] = [];
+                      if (st.student?.registerNumber) progMap[p].push(st.student.registerNumber);
+                    });
+
+                    const progs = Object.keys(progMap);
+                    progs.forEach((prog, pIdx) => {
+                      const regs = progMap[prog].sort();
+                      const fromReg = regs[0];
+                      const toReg = regs[regs.length - 1];
+                      grandTotal += regs.length;
+
+                      rows.push(
+                        <tr key={`${hg.hall._id}-${prog}`} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                          <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                            {serial++}
+                          </td>
+                          {pIdx === 0 && (
+                            <td
+                              rowSpan={progs.length}
+                              style={{ padding: '0.5rem', fontWeight: 800, color: '#1b365d', border: '1px solid #cbd5e1', verticalAlign: 'middle' }}
+                            >
+                              {hg.hall.hallCode || hg.hall.hallNumber}
+                            </td>
+                          )}
+                          {pIdx === 0 && (
+                            <td
+                              rowSpan={progs.length}
+                              style={{ padding: '0.5rem', border: '1px solid #cbd5e1', verticalAlign: 'middle' }}
+                            >
+                              {hg.hall.block} BLOCK ({hg.hall.floor} FLOOR)
+                            </td>
+                          )}
+                          <td style={{ padding: '0.5rem', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                            {prog}
+                          </td>
+                          <td style={{ padding: '0.5rem', fontFamily: 'monospace', fontWeight: 600, border: '1px solid #cbd5e1' }}>
+                            {fromReg} &nbsp;TO&nbsp; {toReg}
+                          </td>
+                          <td style={{ padding: '0.5rem', textAlign: 'center', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                            {regs.length}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  });
+
+                  if (rows.length === 0) {
+                    return (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                          No seating plan generated for this examination slot.
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  // Add Grand Total Row
+                  rows.push(
+                    <tr key="grand-total" style={{ background: '#f8fafc', fontWeight: 800, borderTop: '2px solid #1b365d' }}>
+                      <td colSpan={5} style={{ padding: '0.6rem 0.75rem', textAlign: 'right', border: '1px solid #cbd5e1' }}>
+                        GRAND TOTAL CANDIDATES:
                       </td>
-                      <td>
-                        <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 800, color: '#1b365d' }}>
-                          {rec.seatNumber}
-                        </span>
+                      <td style={{ padding: '0.6rem 0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                        {grandTotal}
                       </td>
-                      <td>
-                        <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 700 }}>
-                          {rec.registerNumber}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{rec.name}</td>
-                      <td>
-                        <span className="badge badge-blue">{rec.department}</span>
-                      </td>
-                      <td>
-                        Yr {rec.year} - {rec.section}
-                      </td>
-                      <td style={{ borderBottom: '1px solid #cbd5e1', minWidth: '120px' }}></td>
                     </tr>
-                  ))
-                ) : (
+                  );
+
+                  return rows;
+                })()}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* REPORT 2: HALL-WISE 2D BENCH SEATING CHART              */}
+        {/* ======================================================== */}
+        {reportType === 'chart' && (
+          <div>
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontSize: '1.15rem', textTransform: 'uppercase', fontWeight: 800 }}>
+                HALL-WISE BENCH SEATING CHART
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', fontWeight: 600 }}>
+                Hall: <u>{activeHall?.hall?.hallCode || activeHall?.hall?.hallNumber}</u> ({activeHall?.hall?.block} Block, {activeHall?.hall?.floor} Floor) &nbsp;|&nbsp; Date: <u>{selectedSlot?.date}</u> ({selectedSlot?.startTime} - {selectedSlot?.endTime})
+              </p>
+            </div>
+
+            {activeHall ? (
+              <SeatGrid hall={activeHall.hall} seats={activeHall.seats} />
+            ) : (
+              <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                No hall seating plan available.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* REPORT 3: OFFICIAL TIMETABLE NOTICE                     */}
+        {/* ======================================================== */}
+        {reportType === 'timetable' && (
+          <div>
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontSize: '1.15rem', textTransform: 'uppercase', fontWeight: 800, textDecoration: 'underline' }}>
+                EXAMINATION TIMETABLE NOTIFICATION
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', fontWeight: 600 }}>
+                {selectedSlot?.series?.name || 'Continuous Assessment Test II (CAT II)'} — Academic Year 2026-2027 (Odd Semester)
+              </p>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginBottom: '2rem' }}>
+              <thead>
+                <tr style={{ background: '#f1f5f9', borderTop: '2px solid #1b365d', borderBottom: '2px solid #1b365d' }}>
+                  <th style={{ padding: '0.6rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>S.No</th>
+                  <th style={{ padding: '0.6rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Date &amp; Session</th>
+                  <th style={{ padding: '0.6rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Course Code</th>
+                  <th style={{ padding: '0.6rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Course Name</th>
+                  <th style={{ padding: '0.6rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Programmes</th>
+                  <th style={{ padding: '0.6rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  let serial = 1;
+                  const rows = [];
+                  slots.forEach((sl) => {
+                    (sl.papers || []).forEach((p, pIdx) => {
+                      rows.push(
+                        <tr key={`${sl._id}-${p.courseCode}`} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                          <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>
+                            {serial++}
+                          </td>
+                          {pIdx === 0 && (
+                            <td
+                              rowSpan={sl.papers.length}
+                              style={{ padding: '0.5rem', fontWeight: 700, color: '#1b365d', border: '1px solid #cbd5e1', verticalAlign: 'middle' }}
+                            >
+                              <div>{sl.date}</div>
+                              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{sl.startTime} – {sl.endTime}</div>
+                            </td>
+                          )}
+                          <td style={{ padding: '0.5rem', fontFamily: 'monospace', fontWeight: 800, color: '#0f172a', border: '1px solid #cbd5e1' }}>
+                            {p.courseCode}
+                          </td>
+                          <td style={{ padding: '0.5rem', fontWeight: 600, border: '1px solid #cbd5e1' }}>
+                            {p.courseName}
+                          </td>
+                          <td style={{ padding: '0.5rem', border: '1px solid #cbd5e1' }}>
+                            <strong>{p.programmes?.join(', ') || 'All'}</strong>
+                          </td>
+                          <td style={{ padding: '0.5rem', textAlign: 'center', textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                            {p.type}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  });
+                  return rows;
+                })()}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* REPORT 4: INVIGILATION DUTY CHART                       */}
+        {/* ======================================================== */}
+        {reportType === 'invigilation' && (
+          <div>
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: '0 0 0.25rem 0', color: '#0f172a', fontSize: '1.15rem', textTransform: 'uppercase', fontWeight: 800, textDecoration: 'underline' }}>
+                INVIGILATION DUTY ROSTER &amp; ATTENDANCE
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', fontWeight: 600 }}>
+                Date: <u>{selectedSlot?.date}</u> &nbsp;|&nbsp; Session: <u>{selectedSlot?.startTime} – {selectedSlot?.endTime}</u>
+              </p>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', marginBottom: '2rem' }}>
+              <thead>
+                <tr style={{ background: '#f1f5f9', borderTop: '2px solid #1b365d', borderBottom: '2px solid #1b365d' }}>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>S.No</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Hall Code</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Block &amp; Floor</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Invigilator Name</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Department</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'left', border: '1px solid #cbd5e1' }}>Contact No</th>
+                  <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center', border: '1px solid #cbd5e1', width: '130px' }}>Signature</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invigilationDuties.map((duty, idx) => (
+                  <tr key={duty._id} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                    <td style={{ padding: '0.5rem', textAlign: 'center', border: '1px solid #cbd5e1' }}>{idx + 1}</td>
+                    <td style={{ padding: '0.5rem', fontWeight: 800, color: '#1b365d', border: '1px solid #cbd5e1' }}>
+                      {duty.hall?.hallCode || duty.hall?.hallNumber}
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #cbd5e1' }}>
+                      {duty.hall?.block} Block ({duty.hall?.floor} Floor)
+                    </td>
+                    <td style={{ padding: '0.5rem', fontWeight: 700, border: '1px solid #cbd5e1' }}>
+                      {duty.faculty?.name}
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #cbd5e1' }}>
+                      {duty.faculty?.department}
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #cbd5e1', fontFamily: 'monospace' }}>
+                      {duty.faculty?.phone || '—'}
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #cbd5e1' }}></td>
+                  </tr>
+                ))}
+                {invigilationDuties.length === 0 && (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-                      No seating records found for this examination. Please generate seating first.
+                    <td colSpan={7} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                      No invigilators assigned for this slot yet. Assign invigilators via the Invigilation module.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>S.No</th>
-                  <th>Faculty Invigilator</th>
-                  <th>Faculty ID</th>
-                  <th>Department</th>
-                  <th>Assigned Hall</th>
-                  <th>Date & Session</th>
-                  <th>Signature of Invigilator</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '3rem' }}>
-                      Generating invigilation report...
-                    </td>
-                  </tr>
-                ) : invigilationRecords.length > 0 ? (
-                  invigilationRecords.map((inv, idx) => (
-                    <tr key={inv._id}>
-                      <td style={{ textAlign: 'center' }}>{idx + 1}</td>
-                      <td style={{ fontWeight: 700, color: '#0f172a' }}>{inv.facultyId?.name}</td>
-                      <td>
-                        <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 800, color: '#1b365d' }}>
-                          {inv.facultyId?.facultyId}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="badge badge-purple">{inv.facultyId?.department}</span>
-                      </td>
-                      <td>
-                        <span className="badge badge-blue" style={{ fontSize: '0.85rem', fontWeight: 700 }}>
-                          Hall {inv.hallId?.hallNumber}
-                        </span>
-                      </td>
-                      <td>
-                        <div>{inv.examId?.examDate}</div>
-                        <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.75rem', color: '#64748b' }}>
-                          {inv.examId?.startTime} - {inv.examId?.endTime}
-                        </div>
-                      </td>
-                      <td style={{ borderBottom: '1px solid #cbd5e1', minWidth: '140px' }}></td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
-                      No invigilation records found for this exam. Please assign invigilators first.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          )}
+          </div>
+        )}
+
+        {/* Official Signatures Footer */}
+        <div style={{ marginTop: '3.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '1rem', borderTop: '1px dashed #cbd5e1' }}>
+          <div style={{ textAlign: 'center', minWidth: '220px' }}>
+            <div style={{ borderBottom: '1px solid #475569', height: '36px', marginBottom: '0.4rem' }}></div>
+            <strong style={{ fontSize: '0.85rem', color: '#1b365d', display: 'block' }}>
+              Deputy Controller of Examinations
+            </strong>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Easwari Engineering College</span>
+          </div>
+
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ border: '1px solid #94a3b8', borderRadius: '50%', width: '70px', height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.4rem auto', color: '#94a3b8', fontSize: '0.68rem', fontWeight: 700 }}>
+              COE SEAL
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'center', minWidth: '220px' }}>
+            <div style={{ borderBottom: '1px solid #475569', height: '36px', marginBottom: '0.4rem' }}></div>
+            <strong style={{ fontSize: '0.85rem', color: '#1b365d', display: 'block' }}>
+              Controller of Examinations
+            </strong>
+            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Easwari Engineering College</span>
+          </div>
         </div>
       </div>
     </div>

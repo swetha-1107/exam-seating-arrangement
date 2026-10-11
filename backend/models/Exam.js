@@ -17,6 +17,14 @@ const examSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Subject',
     },
+    slotId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ExamSlot',
+    },
+    paperId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ExamPaper',
+    },
     department: {
       type: String,
       trim: true,
@@ -30,20 +38,19 @@ const examSchema = new mongoose.Schema(
       },
     ],
     examDate: {
-      type: String, // YYYY-MM-DD
+      type: String, // YYYY-MM-DD or DD.MM.YYYY
       required: [true, 'Exam Date is required'],
     },
     session: {
       type: String,
-      enum: ['FN', 'AN'],
       default: 'FN',
     },
     startTime: {
-      type: String, // HH:mm format, e.g. "10:00"
+      type: String,
       required: [true, 'Start Time is required'],
     },
     endTime: {
-      type: String, // HH:mm format, e.g. "13:00"
+      type: String,
       required: [true, 'End Time is required'],
     },
     semester: {

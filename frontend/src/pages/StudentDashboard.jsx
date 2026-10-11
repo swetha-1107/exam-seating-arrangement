@@ -37,7 +37,7 @@ const StudentDashboard = () => {
       setError('');
       const [seatingRes, regRes] = await Promise.allSettled([
         api.get('/seating/my-seating'),
-        api.get('/registrations/my-exams'),
+        api.get('/exams/my-exams'),
       ]);
 
       if (seatingRes.status === 'fulfilled') {
@@ -47,9 +47,9 @@ const StudentDashboard = () => {
       }
 
       if (regRes.status === 'fulfilled') {
-        setRegistrationsData(regRes.value.data?.registrations || []);
+        setRegistrationsData(regRes.value.data?.exams || []);
       } else {
-        console.warn('Registration fetch note:', regRes.reason?.message);
+        console.warn('Exams fetch note:', regRes.reason?.message);
       }
     } catch (err) {
       setError(err.message || 'Failed to load student examination records.');
@@ -248,7 +248,7 @@ const StudentDashboard = () => {
                     {activeAssignment.seatNumber}
                   </div>
                   <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#93c5fd' }}>
-                    Hall {activeAssignment.hall?.hallNumber}
+                    Hall {activeAssignment.hall?.hallCode || activeAssignment.hall?.hallNumber}
                   </div>
                 </div>
               </div>
@@ -277,7 +277,7 @@ const StudentDashboard = () => {
                   <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Building size={15} />
                     <span>
-                      Hall {activeAssignment.hall?.hallNumber} ({activeAssignment.hall?.building})
+                      Hall {activeAssignment.hall?.hallCode || activeAssignment.hall?.hallNumber} ({activeAssignment.hall?.block || activeAssignment.hall?.building} Block, {activeAssignment.hall?.floor} Floor)
                     </span>
                   </div>
                 </div>

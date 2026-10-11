@@ -582,36 +582,40 @@ const FacultyDashboard = () => {
               </thead>
               <tbody>
                 {duties.length > 0 ? (
-                  duties.map((duty) => (
-                    <tr key={duty._id}>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#1b365d' }}>
-                          <CalendarDays size={14} color="#1b365d" />
-                          <span>{duty.examId?.examDate}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="badge badge-purple">{duty.examId?.session || 'FN'}</span>
-                      </td>
-                      <td style={{ fontFamily: 'JetBrains Mono', fontSize: '0.85rem' }}>
-                        {duty.examId?.startTime} - {duty.examId?.endTime}
-                      </td>
-                      <td>
-                        <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 800, color: '#0f172a' }}>
-                          {duty.examId?.examCode || 'EXAM'}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{duty.examId?.examName}</td>
-                      <td>
-                        <span className="badge badge-blue" style={{ fontSize: '0.85rem', fontWeight: 800 }}>
-                          Hall {duty.hallId?.hallNumber}
-                        </span>
-                      </td>
-                      <td style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                        {duty.hallId?.building} (Floor {duty.hallId?.floor})
-                      </td>
-                    </tr>
-                  ))
+                  duties.map((duty) => {
+                    const hall = duty.hall || duty.hallId;
+                    const exam = duty.examId || duty.slot;
+                    return (
+                      <tr key={duty._id}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#1b365d' }}>
+                            <CalendarDays size={14} color="#1b365d" />
+                            <span>{duty.examDate || exam?.date || exam?.examDate}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="badge badge-purple">{exam?.session || 'FN'}</span>
+                        </td>
+                        <td style={{ fontFamily: 'JetBrains Mono', fontSize: '0.85rem' }}>
+                          {duty.startTime || exam?.startTime} - {duty.endTime || exam?.endTime}
+                        </td>
+                        <td>
+                          <span style={{ fontFamily: 'JetBrains Mono', fontWeight: 800, color: '#0f172a' }}>
+                            {exam?.examCode || exam?.notes || 'EXAM'}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{exam?.examName || exam?.notes || 'Examination Duty'}</td>
+                        <td>
+                          <span className="badge badge-blue" style={{ fontSize: '0.85rem', fontWeight: 800 }}>
+                            Hall {hall?.hallCode || hall?.hallNumber}
+                          </span>
+                        </td>
+                        <td style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                          {hall?.block ? `${hall.block} Block` : hall?.building} (Floor {hall?.floor})
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan="7">

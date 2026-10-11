@@ -15,6 +15,7 @@ router.route('/')
   .post(protect, authorizeRoles('admin'), createStudent);
 
 router.post('/bulk', protect, authorizeRoles('admin'), bulkUploadStudents);
+router.post('/import-csv', protect, authorizeRoles('admin'), bulkUploadStudents);
 
 router.route('/:id')
   .get(protect, getStudentById)

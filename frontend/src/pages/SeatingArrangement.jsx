@@ -3,19 +3,19 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Grid3X3,
   CalendarDays,
+  Clock,
   Building2,
   Users,
   CheckCircle2,
   AlertTriangle,
-  RefreshCw,
+  RotateCcw,
   Trash2,
   Sparkles,
   Info,
   CheckCircle,
   XCircle,
-  UserCheck,
-  Building,
-  Layers,
+  FileText,
+  Share2,
 } from 'lucide-react';
 import api from '../services/api';
 import SeatGrid from '../components/SeatGrid';
@@ -24,152 +24,147 @@ const SeatingArrangement = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [exams, setExams] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const queryParams = new URLSearchParams(location.search);
+  const initialSlotId = queryParams.get('slotId') || location.state?.selectedSlotId || '';
 
-  // Workflow Selection State
-  const [selectedDate, setSelectedDate] = useState('2026-10-15');
-  const [selectedSession, setSelectedSession] = useState('FN');
-  const [selectedDept, setSelectedDept] = useState('ALL');
-  const [selectedExamId, setSelectedExamId] = useState(
-    location.state?.selectedExamId || ''
-  );
+  const [slots, setSlots] = useState([]);
+  const [selectedSlotId, setSelectedSlotId] = useState(initialSlotId);
+  const [selectedHallIdx, setSelectedHallIdx] = useState(0);
 
   // Analysis & Plan Data
   const [analysis, setAnalysis] = useState(null);
   const [seatingData, setSeatingData] = useState(null);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // 1. Initial Load: exams and departments
+  // 1. Fetch available Slots
   useEffect(() => {
-    const initData = async () => {
+    const fetchSlots = async () => {
       try {
         setLoading(true);
-        const [examsRes, deptsRes] = await Promise.all([
-          api.get('/exams'),
-          api.get('/departments'),
-        ]);
+        const res = await api.get('/seating/slots');
+        setSlots(res.data);
 
-        setExams(examsRes.data);
-        setDepartments(deptsRes.data);
-
-        if (!selectedExamId && examsRes.data.length > 0) {
-          setSelectedExamId(examsRes.data[0]._id);
+        if (res.data.length > 0) {
+          if (!selectedSlotId || !res.data.some((s) => s._id === selectedSlotId)) {
+            setSelectedSlotId(res.data[0]._id);
+          }
         }
       } catch (err) {
-        setError(err.message || 'Failed to initialize examinations list');
+        setError(err.message || 'Failed to fetch examination slots.');
       } finally {
         setLoading(false);
       }
     };
 
-    initData();
+    fetchSlots();
   }, []);
 
-  // Filter exams by Date, Session, and Department
-  const filteredExams = exams.filter((ex) => {
-    if (selectedDate && ex.examDate !== selectedDate) return false;
-    if (selectedSession && selectedSession !== 'ALL' && (ex.session || 'FN') !== selectedSession) return false;
-    if (selectedDept && selectedDept !== 'ALL') {
-      const matchDept = ex.department === selectedDept || ex.department === 'ALL';
-      const matchLinked = (ex.departments || []).some((d) => (d.code || d) === selectedDept);
-      if (!matchDept && !matchLinked) return false;
-    }
-    return true;
-  });
-
-  // When filters change, auto-select first matching exam if current selection is not in filtered list
-  useEffect(() => {
-    if (filteredExams.length > 0) {
-      const exists = filteredExams.some((e) => e._id === selectedExamId);
-      if (!exists) {
-        setSelectedExamId(filteredExams[0]._id);
-      }
-    }
-  }, [selectedDate, selectedSession, selectedDept, exams]);
-
-  // 2. Fetch Analysis & Current Plan for selected exam
-  const loadExamDetails = async (examId) => {
-    if (!examId) return;
+  // 2. Whenever selectedSlotId changes, load analysis and seating plan
+  const loadSlotDetails = async (slotId) => {
+    if (!slotId) return;
     try {
       setAnalyzing(true);
       setError('');
 
-      const [analysisRes, seatingRes] = await Promise.allSettled([
-        api.get(`/seating/analyze/${examId}`),
-        api.get(`/seating/${examId}`),
+      const [analysisRes, planRes] = await Promise.all([
+        api.get(`/seating/analyze-slot/${slotId}`),
+        api.get(`/seating/slot/${slotId}`),
       ]);
 
-      if (analysisRes.status === 'fulfilled') {
-        setAnalysis(analysisRes.value.data);
-      } else {
-        setAnalysis(null);
-        setError(analysisRes.reason?.message || 'Failed to inspect exam requirements');
-      }
-
-      if (seatingRes.status === 'fulfilled') {
-        setSeatingData(seatingRes.value.data);
-      } else {
-        setSeatingData(null);
-      }
+      setAnalysis(analysisRes.data);
+      setSeatingData(planRes.data);
+      setSelectedHallIdx(0);
     } catch (err) {
-      setError(err.message || 'Failed to load examination seating analysis');
+      setError(err.message || 'Failed to load details for this slot.');
     } finally {
       setAnalyzing(false);
     }
   };
 
   useEffect(() => {
-    if (selectedExamId) {
-      loadExamDetails(selectedExamId);
+    if (selectedSlotId) {
+      loadSlotDetails(selectedSlotId);
     }
-  }, [selectedExamId]);
+  }, [selectedSlotId]);
 
-  // 3. Automated Seating Generation
-  const handleGenerateSeating = async () => {
-    if (!selectedExamId) {
-      setError('Please select an examination first.');
-      return;
-    }
-
-    if (seatingData?.totalSeated > 0) {
-      if (!window.confirm('A seating plan already exists for this examination. Regenerate and replace it?')) {
-        return;
-      }
-    }
-
+  // 3. Generate Seating Plan (Two-Seat Bench Mixed Pairing)
+  const handleGenerate = async (forceReplace = false) => {
+    if (!selectedSlotId) return;
     try {
       setGenerating(true);
       setError('');
       setSuccess('');
 
-      const res = await api.post(`/seating/generate/${selectedExamId}`);
-      setSuccess(res.data.message || 'Seating plan generated successfully with department interleaving.');
-      await loadExamDetails(selectedExamId);
-      setTimeout(() => setSuccess(''), 6000);
+      const res = await api.post(`/seating/generate-slot/${selectedSlotId}`, {
+        forceReplace,
+      });
+
+      setSuccess(res.data.message || 'Seating plan generated successfully (DRAFT)!');
+      await loadSlotDetails(selectedSlotId);
+
+      // Refresh slots list to update status
+      const slotsRes = await api.get('/seating/slots');
+      setSlots(slotsRes.data);
     } catch (err) {
+      if (err.message && err.message.includes('already exists')) {
+        if (window.confirm('A seating plan already exists for this slot. Do you want to REGENERATE (replace) it?')) {
+          handleGenerate(true);
+          return;
+        }
+      }
       setError(err.message || 'Failed to generate seating plan.');
     } finally {
       setGenerating(false);
     }
   };
 
-  // 4. Clear Seating Plan
-  const handleClearSeating = async () => {
-    if (!window.confirm('Clear all allocated seats for this examination?')) return;
+  // 4. Publish Seating Plan
+  const handlePublish = async () => {
+    if (!selectedSlotId) return;
+    try {
+      setPublishing(true);
+      setError('');
+      setSuccess('');
+
+      const res = await api.post(`/seating/publish-slot/${selectedSlotId}`);
+      setSuccess(res.data.message || 'Seating plan PUBLISHED! Students can now see their seat assignments.');
+      await loadSlotDetails(selectedSlotId);
+
+      // Refresh slots list
+      const slotsRes = await api.get('/seating/slots');
+      setSlots(slotsRes.data);
+    } catch (err) {
+      setError(err.message || 'Failed to publish seating plan.');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  // 5. Clear Seating Plan
+  const handleClear = async () => {
+    if (!selectedSlotId) return;
+    if (!window.confirm('Are you sure you want to delete the seating plan for this slot?')) {
+      return;
+    }
+
     try {
       setClearing(true);
       setError('');
-      await api.delete(`/seating/${selectedExamId}`);
-      setSuccess('Seating plan cleared successfully.');
-      await loadExamDetails(selectedExamId);
-      setTimeout(() => setSuccess(''), 4000);
+      setSuccess('');
+
+      const res = await api.delete(`/seating/slot/${selectedSlotId}`);
+      setSuccess(res.data.message || 'Seating plan cleared.');
+      await loadSlotDetails(selectedSlotId);
+
+      const slotsRes = await api.get('/seating/slots');
+      setSlots(slotsRes.data);
     } catch (err) {
       setError(err.message || 'Failed to clear seating plan.');
     } finally {
@@ -177,303 +172,308 @@ const SeatingArrangement = () => {
     }
   };
 
-  const selectedExam = exams.find((e) => e._id === selectedExamId);
+  const currentSlot = slots.find((s) => s._id === selectedSlotId);
+  const halls = seatingData?.halls || [];
+  const activeHall = halls[selectedHallIdx] || null;
 
   return (
     <div>
-      <div className="page-header">
+      {/* Header */}
+      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <div>
-          <h1>Automatic Mixed-Department Seating Allocation</h1>
-          <p>
-            Easwari Engineering College • Automated constraint-based seating generation. Students from different departments share examination halls with department interleaving.
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#627d98', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Easwari Engineering College • Examination Seating System
+          </span>
+          <h1 style={{ marginTop: '0.2rem', color: '#1b365d', fontSize: '1.45rem' }}>
+            Automated Slot Seating Allocation
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '0.85rem' }}>
+            Automatic 2-student-per-bench pairing across multiple programmes with contiguous register number chunking.
           </p>
         </div>
+        <div className="header-actions">
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => navigate('/admin/reports')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+          >
+            <FileText size={15} />
+            <span>Official Notices &amp; Reports</span>
+          </button>
+        </div>
       </div>
 
-      {success && (
-        <div className="alert alert-success">
-          <CheckCircle2 size={18} />
-          <span>{success}</span>
-        </div>
-      )}
+      {error && <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>{error}</div>}
+      {success && <div className="alert alert-success" style={{ marginBottom: '1rem' }}>{success}</div>}
 
-      {error && (
-        <div className="alert alert-error">
-          <AlertTriangle size={18} />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Workflow Selector Bar */}
-      <div className="card" style={{ marginBottom: '1.75rem' }}>
-        <div className="card-header">
-          <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Layers size={18} color="#1b365d" />
-            <span>Step 1: Select Examination Session, Department & Paper</span>
-          </h3>
-          {seatingData?.totalSeated > 0 && (
-            <button
-              onClick={handleClearSeating}
-              disabled={clearing}
-              className="btn btn-danger-outline btn-sm"
-            >
-              <Trash2 size={14} />
-              <span>{clearing ? 'Clearing...' : 'Clear Current Seating'}</span>
-            </button>
-          )}
-        </div>
-
-        <div style={{ padding: '1.25rem 1.5rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                Examination Date:
-              </label>
-              <input
-                type="date"
-                className="form-control"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                Session Slot:
-              </label>
-              <select
-                className="form-control"
-                value={selectedSession}
-                onChange={(e) => setSelectedSession(e.target.value)}
-              >
-                <option value="ALL">All Sessions</option>
-                <option value="FN">FN - Forenoon (10:00 - 13:00)</option>
-                <option value="AN">AN - Afternoon (14:00 - 17:00)</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-                Department:
-              </label>
-              <select
-                className="form-control"
-                value={selectedDept}
-                onChange={(e) => setSelectedDept(e.target.value)}
-              >
-                <option value="ALL">All Departments</option>
-                {departments.map((d) => (
-                  <option key={d._id} value={d.code}>
-                    {d.code} - {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.35rem', color: '#1e293b' }}>
-              Select Examination Paper to Allocate:
+      {/* Slot Selection Card */}
+      <div className="card" style={{ marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <label style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1b365d' }}>
+              Select Examination Slot:
             </label>
             <select
+              value={selectedSlotId}
+              onChange={(e) => setSelectedSlotId(e.target.value)}
               className="form-control"
-              value={selectedExamId}
-              onChange={(e) => setSelectedExamId(e.target.value)}
-              style={{ fontSize: '0.95rem', fontWeight: 700 }}
+              style={{ minWidth: '320px', fontWeight: 600 }}
+              disabled={loading}
             >
-              {filteredExams.length > 0 ? (
-                filteredExams.map((ex) => (
-                  <option key={ex._id} value={ex._id}>
-                    [{ex.examCode}] {ex.examName} ({ex.department}) • Date: {ex.examDate} • {ex.session || 'FN'} ({ex.startTime} - {ex.endTime})
-                  </option>
-                ))
-              ) : (
-                <option value="">No examinations match the selected date, session, and department filters</option>
-              )}
+              {slots.map((s) => (
+                <option key={s._id} value={s._id}>
+                  {s.date} ({s.startTime} - {s.endTime}) — {s.papersCount} Paper(s) [{s.seatingStatus || 'NOT_GENERATED'}]
+                </option>
+              ))}
             </select>
           </div>
+
+          {currentSlot && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Status:</span>
+              {currentSlot.seatingStatus === 'PUBLISHED' ? (
+                <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <CheckCircle2 size={13} /> PUBLISHED
+                </span>
+              ) : currentSlot.seatingStatus === 'DRAFT' ? (
+                <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Clock size={13} /> DRAFT (UNPUBLISHED)
+                </span>
+              ) : (
+                <span className="badge badge-secondary">NOT GENERATED</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Pre-Generation Readiness Diagnostic Summary Box */}
+      {/* Readiness Diagnostics Summary Card */}
       {analysis && (
-        <div className="card" style={{ marginBottom: '1.75rem' }}>
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div
+          className="card"
+          style={{
+            marginBottom: '1.25rem',
+            borderLeft: analysis.canGenerate ? '4px solid #10b981' : '4px solid #ef4444',
+            background: analysis.canGenerate ? '#f0fdf4' : '#fef2f2',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.75rem' }}>
             <div>
-              <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Sparkles size={18} color="#1b365d" />
-                <span>Step 2: Pre-Generation Readiness Summary & Conflict Checks</span>
-              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                {analysis.canGenerate ? (
+                  <span className="badge badge-success" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                    <CheckCircle2 size={13} style={{ marginRight: '0.25rem', verticalAlign: '-2px' }} />
+                    READY TO GENERATE
+                  </span>
+                ) : (
+                  <span className="badge badge-danger" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                    <AlertTriangle size={13} style={{ marginRight: '0.25rem', verticalAlign: '-2px' }} />
+                    CANNOT GENERATE
+                  </span>
+                )}
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1b365d' }}>
+                  Slot: {analysis.slot?.date} ({analysis.slot?.startTime} – {analysis.slot?.endTime})
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: '#475569' }}>
+                Applicable Students: <strong>{analysis.totalStudents}</strong> across <strong>{analysis.papers?.length || 0} papers</strong> • Available Hall Capacity: <strong>{analysis.availableCapacity} seats</strong> • Halls Needed: <strong>~{analysis.hallsNeeded}</strong>
+              </p>
             </div>
-            <div>
-              {analysis.canGenerate ? (
-                <span className="badge badge-emerald" style={{ fontSize: '0.9rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <CheckCircle size={16} />
-                  <span>STATUS: {analysis.statusText}</span>
-                </span>
-              ) : (
-                <span className="badge badge-rose" style={{ fontSize: '0.9rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <XCircle size={16} />
-                  <span>STATUS: {analysis.statusText}</span>
-                </span>
+
+            {/* Actions Toolbar */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => handleGenerate(false)}
+                disabled={generating || !analysis.canGenerate}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <Sparkles size={14} />
+                <span>{halls.length > 0 ? 'Regenerate Seating' : 'Auto-Generate Seating'}</span>
+              </button>
+
+              {currentSlot?.seatingStatus === 'DRAFT' && (
+                <button
+                  className="btn btn-success btn-sm"
+                  onClick={handlePublish}
+                  disabled={publishing}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#059669', borderColor: '#059669', color: '#fff' }}
+                >
+                  <Share2 size={14} />
+                  <span>Publish to Students</span>
+                </button>
+              )}
+
+              {halls.length > 0 && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleClear}
+                  disabled={clearing}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#b91c1c' }}
+                >
+                  <Trash2 size={14} />
+                  <span>Clear Plan</span>
+                </button>
               )}
             </div>
           </div>
 
-          <div style={{ padding: '1.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
-              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Eligible Candidates to Seat</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1b365d' }}>
-                  {analysis.registeredStudents}
+          {/* Blocking Warnings */}
+          {analysis.warnings && analysis.warnings.length > 0 && (
+            <div style={{ marginTop: '0.5rem', borderTop: '1px solid rgba(0,0,0,0.08)', paddingTop: '0.5rem' }}>
+              {analysis.warnings.map((w, idx) => (
+                <div key={idx} style={{ fontSize: '0.8rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <AlertTriangle size={13} />
+                  <span>{w}</span>
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                  Dept: <strong>{analysis.exam.department}</strong>
-                </div>
-              </div>
-
-              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Available Hall Capacity</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#059669' }}>
-                  {analysis.availableCapacity} seats
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Across non-clashing halls</div>
-              </div>
-
-              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Halls Required by Algorithm</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#7a1c1d' }}>
-                  {analysis.hallsNeeded} {analysis.hallsNeeded === 1 ? 'Hall' : 'Halls'}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                  {analysis.selectedHalls.map((h) => h.hallNumber).join(', ') || 'Auto-computed'}
-                </div>
-              </div>
-
-              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Invigilators Required</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#1b365d' }}>
-                  {analysis.invigilatorsRequired}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                  {analysis.eligibleFacultyCount} eligible faculty available
-                </div>
-              </div>
+              ))}
             </div>
+          )}
 
-            {/* Diagnostic Notices & Conflict Warnings */}
-            {analysis.warnings && analysis.warnings.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.25rem' }}>
-                {analysis.warnings.map((warn, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      fontSize: '0.85rem',
-                      color: analysis.canGenerate ? '#1e3a8a' : '#b91c1c',
-                      background: analysis.canGenerate ? '#eff6ff' : '#fef2f2',
-                      padding: '0.5rem 0.85rem',
-                      borderRadius: '6px',
-                      border: `1px solid ${analysis.canGenerate ? '#bfdbfe' : '#fecaca'}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                    }}
-                  >
-                    <Info size={16} />
-                    <span>{warn}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Action Bar */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                Algorithm automatically allocates free desks and interleaves departments side-by-side.
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button
-                  onClick={handleGenerateSeating}
-                  disabled={generating || analyzing || !analysis?.canGenerate}
-                  className="btn btn-primary"
-                  style={{ padding: '0.75rem 2rem', fontSize: '0.95rem' }}
-                >
-                  {generating ? (
-                    <>
-                      <RefreshCw size={18} className="animate-spin" />
-                      <span>Computing Allocation...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Grid3X3 size={18} />
-                      <span>{seatingData?.totalSeated > 0 ? 'Regenerate Seating Plan' : 'Generate Seating Plan'}</span>
-                    </>
-                  )}
-                </button>
-
-                {seatingData?.totalSeated > 0 && (
-                  <button
-                    onClick={() => navigate('/admin/invigilation', { state: { selectedExamId } })}
-                    className="btn btn-secondary"
-                    style={{ padding: '0.75rem 1.25rem' }}
-                  >
-                    <UserCheck size={16} />
-                    <span>Assign Invigilators</span>
-                  </button>
-                )}
-              </div>
-            </div>
+          {/* Scheduled Papers in Slot */}
+          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {analysis.papers?.map((p, idx) => (
+              <span
+                key={idx}
+                style={{
+                  fontSize: '0.72rem',
+                  padding: '0.2rem 0.5rem',
+                  borderRadius: '4px',
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  color: '#1b365d',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                }}
+              >
+                <strong>{p.courseCode}:</strong> {p.studentCount} students ({p.programmes?.join(', ') || 'All'})
+              </span>
+            ))}
           </div>
         </div>
       )}
 
-      {/* 2D Visual Hall Matrix Output */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-              Step 3: Visual Hall Seating Charts (Mixed-Department View)
-            </h2>
-            <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
-              Displays exact desk positions for each hall. Students writing different papers are clearly identified.
-            </p>
-          </div>
-
-          {seatingData?.totalSeated > 0 && (
-            <span className="badge badge-emerald" style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}>
-              {seatingData.halls.length} Hall(s) In Use • {seatingData.totalSeated} Students Seated
-            </span>
-          )}
-        </div>
-
-        {analyzing ? (
-          <div style={{ textAlign: 'center', padding: '4rem', background: '#fff', borderRadius: '12px' }}>
-            <p style={{ color: '#64748b' }}>Analyzing examination constraints and room layouts...</p>
-          </div>
-        ) : seatingData && seatingData.halls.length > 0 ? (
-          <div>
-            {seatingData.halls.map((hallGroup) => (
-              <SeatGrid
-                key={hallGroup.hallDetails._id}
-                hall={hallGroup.hallDetails}
-                seats={hallGroup.seats}
-              />
+      {/* Seating Plan View */}
+      {halls.length > 0 ? (
+        <div>
+          {/* Hall Tabs */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+            {halls.map((hg, idx) => (
+              <button
+                key={hg.hall._id}
+                onClick={() => setSelectedHallIdx(idx)}
+                className={`btn btn-sm ${selectedHallIdx === idx ? 'btn-primary' : 'btn-secondary'}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Building2 size={14} />
+                <span>Hall {hg.hall.hallCode || hg.hall.hallNumber}</span>
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    background: selectedHallIdx === idx ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                    color: selectedHallIdx === idx ? '#fff' : '#475569',
+                    padding: '0.05rem 0.35rem',
+                    borderRadius: '4px',
+                  }}
+                >
+                  {hg.seatsCount} seats
+                </span>
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="card" style={{ padding: '3.5rem 2rem', textAlign: 'center' }}>
-            <Grid3X3 size={48} color="#cbd5e1" style={{ margin: '0 auto 1rem auto' }} />
-            <h3 style={{ fontSize: '1.15rem', color: '#0f172a', marginBottom: '0.5rem' }}>
-              No Seating Plan Generated For This Examination Yet
+
+          {/* Active Hall Visualization */}
+          {activeHall && (
+            <SeatGrid hall={activeHall.hall} seats={activeHall.seats} />
+          )}
+
+          {/* Hall Allocation Summary Table (Notice Format) */}
+          <div className="card" style={{ marginTop: '1.25rem' }}>
+            <h3 style={{ fontSize: '1.05rem', color: '#1b365d', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <FileText size={18} color="#1b365d" />
+              Contiguous Register Range Summary (Notice Board Layout)
             </h3>
-            <p style={{ color: '#64748b', maxWidth: '520px', margin: '0 auto', fontSize: '0.9rem' }}>
-              Select an examination paper above and click <strong>"Generate Seating Plan"</strong>.
-              The backend engine will allocate available desks across halls and enforce all college examination rules.
-            </p>
+
+            <div className="table-responsive">
+              <table className="table" style={{ width: '100%', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr>
+                    <th>Hall Code</th>
+                    <th>Block &amp; Floor</th>
+                    <th>Programme</th>
+                    <th>Register Number Range</th>
+                    <th>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {halls.map((hg) => {
+                    // Group contiguous seats by programme
+                    const progGroups = {};
+                    hg.seats.forEach((st) => {
+                      const p = st.student?.programme || 'OTHER';
+                      if (!progGroups[p]) progGroups[p] = [];
+                      if (st.student?.registerNumber) {
+                        progGroups[p].push(st.student.registerNumber);
+                      }
+                    });
+
+                    return Object.entries(progGroups).map(([prog, regs], pIdx) => {
+                      regs.sort();
+                      const fromReg = regs[0];
+                      const toReg = regs[regs.length - 1];
+                      return (
+                        <tr key={`${hg.hall._id}-${prog}`}>
+                          {pIdx === 0 && (
+                            <td rowSpan={Object.keys(progGroups).length} style={{ fontWeight: 700, color: '#1b365d' }}>
+                              {hg.hall.hallCode || hg.hall.hallNumber}
+                            </td>
+                          )}
+                          {pIdx === 0 && (
+                            <td rowSpan={Object.keys(progGroups).length}>
+                              {hg.hall.block} Block • {hg.hall.floor} Floor
+                            </td>
+                          )}
+                          <td style={{ fontWeight: 600 }}>{prog}</td>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
+                            {fromReg} – {toReg}
+                          </td>
+                          <td style={{ fontWeight: 700 }}>{regs.length}</td>
+                        </tr>
+                      );
+                    });
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1rem' }}>
+          <Building2 size={40} color="#94a3b8" style={{ margin: '0 auto 0.75rem auto' }} />
+          <h3 style={{ fontSize: '1.1rem', color: '#1b365d', marginBottom: '0.35rem' }}>
+            No Seating Plan Generated Yet
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '0.85rem', maxWidth: '480px', margin: '0 auto 1.25rem auto' }}>
+            Click "Auto-Generate Seating" above to automatically allocate students across exam halls using the university two-student per bench pairing rules.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => handleGenerate(false)}
+            disabled={generating || !analysis?.canGenerate}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <Sparkles size={16} />
+            <span>Generate Seating Plan Now</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -11,7 +11,6 @@ const SeatingPlan = require('../models/SeatingPlan');
 const Invigilation = require('../models/Invigilation');
 const Faculty = require('../models/Faculty');
 const FacultyAvailability = require('../models/FacultyAvailability');
-const ExamRegistration = require('../models/ExamRegistration');
 const seatingService = require('../services/seatingService');
 const invigilationService = require('../services/invigilationService');
 

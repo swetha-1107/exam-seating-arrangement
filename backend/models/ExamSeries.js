@@ -28,6 +28,14 @@ const examSeriesSchema = new mongoose.Schema(
         type: Number,
       },
     ],
+    basePlanSlot: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ExamSlot',
+    },
+    hasBasePlan: {
+      type: Boolean,
+      default: false,
+    },
     isActive: {
       type: Boolean,
       default: true,

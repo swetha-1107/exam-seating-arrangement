@@ -33,6 +33,8 @@ const listSlots = async (req, res) => {
           endTime: slot.endTime,
           notes: slot.notes,
           seatingStatus: slot.seatingStatus || 'NOT_GENERATED',
+          reuseStatus: slot.reuseStatus || '',
+          selectionExplanations: slot.selectionExplanations || [],
           status: slot.status,
           papersCount: papers.length,
           papers: papers.map((p) => {
@@ -143,6 +145,35 @@ const getMySeating = async (req, res) => {
   }
 };
 
+// @desc    Evaluate multi-day base plan reuse for a slot
+// @route   GET /api/seating/evaluate-reuse/:slotId
+// @access  Private (Admin)
+const evaluateSlotReuse = async (req, res) => {
+  try {
+    const { slotId } = req.params;
+    const result = await seatingService.evaluateSlotReuseStatus(slotId);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// @desc    Re-plan seating for a specific slot override
+// @route   POST /api/seating/replan-slot/:slotId
+// @access  Private (Admin)
+const replanSlot = async (req, res) => {
+  try {
+    const { slotId } = req.params;
+    const result = await seatingService.replanSlotSeating(slotId, req.body);
+    res.status(201).json({
+      message: result.message,
+      result,
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
 // Legacy backward-compatibility endpoints
 const analyzeSeating = async (req, res) => {
   try {
@@ -195,6 +226,8 @@ module.exports = {
   getSlotSeating,
   clearSlotSeating,
   getMySeating,
+  evaluateSlotReuse,
+  replanSlot,
   // Legacy
   analyzeSeating,
   generateSeatingPlan,

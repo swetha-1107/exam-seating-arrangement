@@ -199,7 +199,28 @@ const ReportsPage = () => {
               </h3>
               <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', fontWeight: 600 }}>
                 {selectedSlot?.series?.name || 'Continuous Assessment Test II (CAT II)'} — Date: <u>{selectedSlot?.date}</u> &nbsp;|&nbsp; Time: <u>{selectedSlot?.startTime} – {selectedSlot?.endTime}</u>
+                {selectedSlot?.reuseStatus && (
+                  <span
+                    style={{
+                      marginLeft: '0.75rem',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: '4px',
+                      background: selectedSlot.reuseStatus === 'RE-PLANNED' ? '#fef3c7' : '#dcfce7',
+                      color: selectedSlot.reuseStatus === 'RE-PLANNED' ? '#b45309' : '#15803d',
+                      border: `1px solid ${selectedSlot.reuseStatus === 'RE-PLANNED' ? '#f59e0b' : '#16a34a'}`,
+                    }}
+                  >
+                    PLAN: {selectedSlot.reuseStatus}
+                  </span>
+                )}
               </p>
+              {selectedSlot?.reuseStatus === 'RE-PLANNED' && (
+                <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: '#b45309', fontWeight: 700, background: '#fffbeb', padding: '0.25rem 0.5rem', borderRadius: '4px', display: 'inline-block' }}>
+                  ★ NOTICE: Seating arrangement for this examination date has been re-planned independently to resolve paper sharing constraints.
+                </div>
+              )}
               {selectedSlot?.papers && selectedSlot.papers.length > 0 && (
                 <div style={{ marginTop: '0.45rem', fontSize: '0.82rem', color: '#1b365d', fontWeight: 600 }}>
                   <strong>Scheduled Papers:</strong>{' '}

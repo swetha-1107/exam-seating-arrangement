@@ -28,9 +28,22 @@ const examSlotSchema = new mongoose.Schema(
     },
     seatingStatus: {
       type: String,
-      enum: ['NOT_GENERATED', 'DRAFT', 'PUBLISHED'],
+      enum: ['NOT_GENERATED', 'DRAFT', 'PUBLISHED', 'REUSED_OK', 'REUSED_WITH_WARNINGS', 'NEEDS_REPLAN', 'REPLANNED'],
       default: 'NOT_GENERATED',
     },
+    reuseStatus: {
+      type: String,
+      default: '',
+    },
+    replanReason: {
+      type: String,
+      default: '',
+    },
+    selectionExplanations: [
+      {
+        type: String,
+      },
+    ],
     status: {
       type: String,
       enum: ['Scheduled', 'In Progress', 'Completed', 'Cancelled'],

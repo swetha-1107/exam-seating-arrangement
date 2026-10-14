@@ -71,6 +71,10 @@ const hallSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    priority: {
+      type: Number,
+      default: 1,
+    },
     // Backwards compatibility alias
     isAvailable: {
       type: Boolean,

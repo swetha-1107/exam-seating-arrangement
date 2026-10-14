@@ -8,6 +8,8 @@ const {
   getSlotSeating,
   clearSlotSeating,
   getMySeating,
+  evaluateSlotReuse,
+  replanSlot,
   // Legacy
   analyzeSeating,
   generateSeatingPlan,
@@ -22,7 +24,9 @@ router.get('/my-seating', protect, authorizeRoles('student', 'admin'), getMySeat
 // Slot-based seating endpoints
 router.get('/slots', protect, listSlots);
 router.get('/analyze-slot/:slotId', protect, authorizeRoles('admin'), analyzeSlotSeating);
+router.get('/evaluate-reuse/:slotId', protect, authorizeRoles('admin'), evaluateSlotReuse);
 router.post('/generate-slot/:slotId', protect, authorizeRoles('admin'), generateSlotSeating);
+router.post('/replan-slot/:slotId', protect, authorizeRoles('admin'), replanSlot);
 router.post('/publish-slot/:slotId', protect, authorizeRoles('admin'), publishSlotSeating);
 router.get('/slot/:slotId', protect, getSlotSeating);
 router.delete('/slot/:slotId', protect, authorizeRoles('admin'), clearSlotSeating);

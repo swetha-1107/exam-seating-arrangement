@@ -32,7 +32,7 @@ const getProgStyle = (prog) => {
   return { bg: '#f1f5f9', border: '#64748b', text: '#334155', badge: '#64748b' };
 };
 
-const SeatGrid = ({ hall, seats = [], highlightRegisterNumber = null }) => {
+const SeatGrid = ({ hall, seats = [], highlightRegisterNumber = null, mySeatLabel = null }) => {
   const [selectedSeat, setSelectedSeat] = useState(null);
 
   if (!hall) return null;
@@ -40,27 +40,66 @@ const SeatGrid = ({ hall, seats = [], highlightRegisterNumber = null }) => {
   const rows = hall.benchRows || hall.rows || 4;
   const cols = hall.benchColumns || hall.columns || 4;
 
-  // Map seats by `${r}-${c}-${side}` and `${seatLabel}`
+  console.log('[SeatGrid] Raw seats prop received:', seats);
+
+  const normMySeat = mySeatLabel ? String(mySeatLabel).trim().toUpperCase() : null;
+
+  // Build grid lookup by ONE consistent key: seatLabel (e.g. "A1-R").
+  // Normalise both sides (trim, uppercase) before comparing.
   const benchSeatMap = {};
   const progCounts = {};
 
   seats.forEach((seat) => {
-    const r = seat.benchRow !== undefined ? seat.benchRow : seat.row;
-    const c = seat.benchColumn !== undefined ? seat.benchColumn : seat.column;
-    const side = seat.side || 'L';
-    const key = `${r}-${c}-${side}`;
-    benchSeatMap[key] = seat;
-    if (seat.seatLabel) {
-      benchSeatMap[seat.seatLabel] = seat;
+    const rawLabel = seat?.seatLabel || seat?.seatNumber;
+    if (rawLabel) {
+      const key = String(rawLabel).trim().toUpperCase();
+      benchSeatMap[key] = seat;
+    }
+    if (seat?.benchRow !== undefined || seat?.row !== undefined) {
+      const r = seat.benchRow !== undefined ? seat.benchRow : seat.row;
+      const c = seat.benchColumn !== undefined ? seat.benchColumn : seat.column;
+      const side = (seat.side || 'L').toUpperCase();
+      benchSeatMap[`${r}-${c}-${side}`] = seat;
     }
 
-    const prog = seat.student?.programme || seat.student?.department || 'OTHER';
-    progCounts[prog] = (progCounts[prog] || 0) + 1;
+    if (seat?.student?.programme || seat?.student?.department) {
+      const prog = seat.student.programme || seat.student.department;
+      progCounts[prog] = (progCounts[prog] || 0) + 1;
+    }
   });
+
+  console.log('[SeatGrid] Seat-lookup map keys:', Object.keys(benchSeatMap));
+
+  // Determine if this is Student View Mode
+  const isStudentView = !!normMySeat || seats.some((s) => s?.occupied || s?.isMine !== undefined);
+
+  // Compute student view counters: "YOU: 1, OTHERS: 31, VACANT: 0"
+  let youCount = 0;
+  let othersCount = 0;
+
+  if (isStudentView) {
+    Array.from({ length: rows }).forEach((_, r) => {
+      const rowLetter = getRowLetter(r);
+      Array.from({ length: cols }).forEach((_, c) => {
+        const benchCode = `${rowLetter}${c + 1}`;
+        ['L', 'R'].forEach((side) => {
+          const lbl = `${benchCode}-${side}`.trim().toUpperCase();
+          const s = benchSeatMap[lbl];
+          const isMine = (normMySeat && lbl === normMySeat) || s?.isMine === true;
+          if (isMine) {
+            youCount++;
+          } else if (s && (s.occupied || s.student)) {
+            othersCount++;
+          }
+        });
+      });
+    });
+  }
+  const vacantCount = Math.max(0, rows * cols * 2 - (youCount + othersCount));
 
   return (
     <div className="hall-visual-container" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', marginBottom: '1.5rem' }}>
-      {/* Hall Details Header & Programme Legend */}
+      {/* Hall Details Header & Legend */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: '0 0 0.25rem 0', color: '#1b365d', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -71,48 +110,106 @@ const SeatGrid = ({ hall, seats = [], highlightRegisterNumber = null }) => {
             </span>
           </h3>
           <p style={{ fontSize: '0.82rem', color: '#64748b', margin: 0 }}>
-            Configuration: {rows} Bench Rows × {cols} Columns (2 Seats per Bench) • Capacity: {hall.capacity || rows * cols * 2} • Seated: {seats.length}
+            Configuration: {rows} Bench Rows × {cols} Columns (2 Seats per Bench) • Capacity: {hall.capacity || rows * cols * 2} • Seated: {isStudentView ? youCount + othersCount : seats.length}
           </p>
         </div>
 
         {/* Legend */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {Object.entries(progCounts).map(([prog, count]) => {
-            const style = getProgStyle(prog);
-            return (
+          {isStudentView ? (
+            <>
               <span
-                key={prog}
                 style={{
                   fontSize: '0.72rem',
                   fontWeight: 700,
                   padding: '0.2rem 0.55rem',
                   borderRadius: '4px',
-                  background: style.bg,
-                  color: style.text,
-                  border: `1px solid ${style.border}`,
+                  background: '#dcfce7',
+                  color: '#15803d',
+                  border: '1px solid #16a34a',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '0.3rem',
                 }}
               >
-                <span>{prog}:</span>
-                <strong>{count}</strong>
+                <span>YOU:</span>
+                <strong>{youCount}</strong>
               </span>
-            );
-          })}
-          <span
-            style={{
-              fontSize: '0.72rem',
-              fontWeight: 500,
-              padding: '0.2rem 0.55rem',
-              borderRadius: '4px',
-              background: '#f8fafc',
-              color: '#94a3b8',
-              border: '1px dashed #cbd5e1',
-            }}
-          >
-            Vacant
-          </span>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '4px',
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  border: '1px solid #cbd5e1',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                }}
+              >
+                <span>OTHERS:</span>
+                <strong>{othersCount}</strong>
+              </span>
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '4px',
+                  background: '#f8fafc',
+                  color: '#94a3b8',
+                  border: '1px dashed #cbd5e1',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                }}
+              >
+                <span>VACANT:</span>
+                <strong>{vacantCount}</strong>
+              </span>
+            </>
+          ) : (
+            <>
+              {Object.entries(progCounts).map(([prog, count]) => {
+                const style = getProgStyle(prog);
+                return (
+                  <span
+                    key={prog}
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: '4px',
+                      background: style.bg,
+                      color: style.text,
+                      border: `1px solid ${style.border}`,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                    }}
+                  >
+                    <span>{prog}:</span>
+                    <strong>{count}</strong>
+                  </span>
+                );
+              })}
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '4px',
+                  background: '#f8fafc',
+                  color: '#94a3b8',
+                  border: '1px dashed #cbd5e1',
+                }}
+              >
+                Vacant
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -146,13 +243,114 @@ const SeatGrid = ({ hall, seats = [], highlightRegisterNumber = null }) => {
             const rowLetter = getRowLetter(r);
             return Array.from({ length: cols }).map((_, c) => {
               const benchCode = `${rowLetter}${c + 1}`;
-              const labelL = `${benchCode}-L`;
-              const labelR = `${benchCode}-R`;
+              const labelL = `${benchCode}-L`.trim().toUpperCase();
+              const labelR = `${benchCode}-R`.trim().toUpperCase();
 
-              const seatL = benchSeatMap[`${r}-${c}-L`] || benchSeatMap[labelL];
-              const seatR = benchSeatMap[`${r}-${c}-R`] || benchSeatMap[labelR];
+              const seatL = benchSeatMap[labelL] || benchSeatMap[`${r}-${c}-L`];
+              const seatR = benchSeatMap[labelR] || benchSeatMap[`${r}-${c}-R`];
 
               const renderSeatHalf = (seat, side, label) => {
+                const normLabel = String(label).trim().toUpperCase();
+                const isMine = (normMySeat && normLabel === normMySeat) || seat?.isMine === true;
+
+                if (isStudentView) {
+                  if (isMine) {
+                    return (
+                      <div
+                        style={{
+                          flex: 1,
+                          padding: '0.45rem',
+                          borderRadius: '4px',
+                          background: '#dcfce7',
+                          border: '2px solid #16a34a',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          minHeight: '72px',
+                          boxShadow: '0 0 0 2px rgba(22,163,74,0.25)',
+                          transition: 'all 0.15s ease',
+                        }}
+                        title={`${label}: YOUR DESK`}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#15803d', fontFamily: 'monospace' }}>
+                            {label}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              padding: '0.05rem 0.35rem',
+                              borderRadius: '3px',
+                              background: '#16a34a',
+                              color: '#ffffff',
+                            }}
+                          >
+                            YOU
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#15803d', textAlign: 'center', margin: 'auto 0' }}>
+                          YOUR DESK
+                        </div>
+                      </div>
+                    );
+                  } else if (seat && (seat.occupied || seat.student)) {
+                    return (
+                      <div
+                        style={{
+                          flex: 1,
+                          padding: '0.45rem',
+                          borderRadius: '4px',
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          minHeight: '72px',
+                          transition: 'all 0.15s ease',
+                        }}
+                        title={`${label}: Occupied`}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', fontFamily: 'monospace' }}>
+                            {label}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', textAlign: 'center', margin: 'auto 0' }}>
+                          Occupied
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div
+                        style={{
+                          flex: 1,
+                          padding: '0.45rem',
+                          borderRadius: '4px',
+                          background: '#f8fafc',
+                          border: '1px dashed #e2e8f0',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          minHeight: '72px',
+                        }}
+                        title={`${label}: Vacant`}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', fontFamily: 'monospace' }}>
+                            {label}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: '#cbd5e1', textAlign: 'center', margin: 'auto 0' }}>
+                          Vacant
+                        </div>
+                      </div>
+                    );
+                  }
+                }
+
+                // Admin / Reports Mode:
                 const isTarget =
                   highlightRegisterNumber &&
                   seat?.student?.registerNumber?.toUpperCase() === highlightRegisterNumber.toUpperCase();
@@ -280,7 +478,7 @@ const SeatGrid = ({ hall, seats = [], highlightRegisterNumber = null }) => {
 
       {/* Modal with detailed student info when a seat is clicked */}
       <Modal
-        isOpen={!!selectedSeat}
+        isOpen={!isStudentView && !!selectedSeat}
         onClose={() => setSelectedSeat(null)}
         title={`Seat Allocation Details: ${selectedSeat?.seatLabel || ''} (Hall ${hall.hallCode || hall.hallNumber})`}
         maxWidth="460px"

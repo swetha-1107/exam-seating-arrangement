@@ -41,6 +41,7 @@ const StudentDashboard = () => {
       ]);
 
       if (seatingRes.status === 'fulfilled') {
+        console.log('[StudentDashboard] Raw seating API response:', seatingRes.value.data);
         setSeatingData(seatingRes.value.data);
       } else {
         console.warn('Seating fetch note:', seatingRes.reason?.message);
@@ -547,8 +548,21 @@ const StudentDashboard = () => {
                     <strong style={{ display: 'block', color: '#0f172a' }}>Floor {activeAssignment.hall?.floor}</strong>
                   </div>
                   <div>
-                    <span style={{ color: '#64748b' }}>Row & Column:</span>
-                    <strong style={{ display: 'block', color: '#0f172a' }}>Row {activeAssignment.row}, Col {activeAssignment.column}</strong>
+                    <span style={{ color: '#64748b' }}>Desk Position:</span>
+                    <strong style={{ display: 'block', color: '#0f172a' }}>
+                      {(() => {
+                        const label = activeAssignment.seatNumber || activeAssignment.seatLabel || '';
+                        const str = String(label).trim().toUpperCase();
+                        const match = str.match(/^([A-Z]+)(\d+)(?:-([LR]))?$/);
+                        if (match) {
+                          const rowLetter = match[1];
+                          const colNum = match[2];
+                          const side = match[3] === 'L' ? 'Left seat' : match[3] === 'R' ? 'Right seat' : '';
+                          return `Row ${rowLetter}, Column ${colNum}${side ? ` (${side})` : ''}`;
+                        }
+                        return `Row ${activeAssignment.benchRow ?? '—'}, Col ${activeAssignment.benchColumn ?? '—'}`;
+                      })()}
+                    </strong>
                   </div>
                 </div>
               </div>
@@ -559,7 +573,7 @@ const StudentDashboard = () => {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                     <div>
                       <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
-                        Visual Hall Layout — Hall {activeAssignment.hall?.hallNumber}
+                        Visual Hall Layout — Hall {activeAssignment.hall?.hallCode || activeAssignment.hall?.hallNumber}
                       </h3>
                       <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
                         Privacy notice: In compliance with institutional policies, peer student details are anonymized.
@@ -567,23 +581,14 @@ const StudentDashboard = () => {
                     </div>
                     <span style={{ fontSize: '0.85rem', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <CheckCircle2 size={16} />
-                      Your Desk ({activeAssignment.seatNumber}) highlighted in Green
+                      Your Desk ({activeAssignment.seatNumber || activeAssignment.seatLabel}) highlighted in Green
                     </span>
                   </div>
 
                   <SeatGrid
                     hall={hallLayout.hall}
-                    seats={hallLayout.occupiedSeats.map((s) => ({
-                      row: s.row,
-                      column: s.column,
-                      seatNumber: s.seatNumber,
-                      student: {
-                        name: s.isCurrentStudent ? student.name : 'Candidate',
-                        registerNumber: s.isCurrentStudent ? student.registerNumber : '••••••',
-                        department: s.department,
-                      },
-                    }))}
-                    highlightRegisterNumber={student?.registerNumber}
+                    seats={hallLayout.occupiedSeats}
+                    mySeatLabel={activeAssignment.seatNumber || activeAssignment.seatLabel}
                   />
                 </div>
               )}

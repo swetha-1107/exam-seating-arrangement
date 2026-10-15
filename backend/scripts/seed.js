@@ -533,3 +533,4 @@ if (require.main === module) {
 }
 
 module.exports = runSeed;
+module.exports.runSeed = runSeed;

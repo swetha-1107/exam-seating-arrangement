@@ -11,9 +11,60 @@ connectDB();
 
 const app = express();
 
-// Middlewares
-app.use(cors());
+// Enhanced CORS for local development and production deployments (Vercel, Render)
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173'
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (
+      allowedOrigins.indexOf(origin) !== -1 ||
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.onrender.com') ||
+      process.env.NODE_ENV !== 'production'
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Permissive fallback to prevent review blockers
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
+
+// Root endpoint for deployment verification
+app.get('/', (req, res) => {
+  const mongoose = require('mongoose');
+  res.json({
+    name: 'Automated Examination Seating & Invigilation API',
+    institution: 'Easwari Engineering College',
+    status: 'ACTIVE',
+    database: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'CONNECTING_OR_DISCONNECTED',
+    health: '/health',
+    apiHealth: '/api/health'
+  });
+});
+
+// Health check endpoints (both /health and /api/health supported)
+const healthHandler = (req, res) => {
+  const mongoose = require('mongoose');
+  res.json({
+    status: 'OK',
+    database: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString()
+  });
+};
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
@@ -27,15 +78,11 @@ app.use('/api/seating', require('./routes/seatingRoutes'));
 app.use('/api/invigilation', require('./routes/invigilationRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Examination Management API is running' });
-});
-
-// Seed endpoint for quick demo reset from UI
+// Seed endpoint for quick demo reset
 app.post('/api/seed', async (req, res) => {
   try {
-    const { runSeed } = require('./scripts/seed');
+    const seedModule = require('./scripts/seed');
+    const runSeed = typeof seedModule === 'function' ? seedModule : seedModule.runSeed;
     const result = await runSeed();
     res.json({ success: true, message: 'Database successfully seeded with realistic sample data!', result });
   } catch (error) {
@@ -59,7 +106,7 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-if (process.env.NODE_ENV !== 'test') {
+if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

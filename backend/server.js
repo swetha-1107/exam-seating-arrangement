@@ -9,6 +9,22 @@ dotenv.config();
 // Connect to MongoDB
 connectDB();
 
+// Register all models to guarantee populate schemas are always available
+require('./models/User');
+require('./models/Department');
+require('./models/Subject');
+require('./models/ProgrammeCourse');
+require('./models/Student');
+require('./models/ExamSeries');
+require('./models/ExamSlot');
+require('./models/ExamPaper');
+require('./models/Exam');
+require('./models/Hall');
+require('./models/Faculty');
+require('./models/FacultyAvailability');
+require('./models/SeatingPlan');
+require('./models/Invigilation');
+
 const app = express();
 
 // Enhanced CORS for local development and production deployments (Vercel, Render)

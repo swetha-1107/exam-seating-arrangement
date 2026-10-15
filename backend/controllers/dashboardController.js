@@ -2,12 +2,15 @@ const Student = require('../models/Student');
 const Department = require('../models/Department');
 const Exam = require('../models/Exam');
 const ExamSlot = require('../models/ExamSlot');
+const ExamSeries = require('../models/ExamSeries');
 const ExamPaper = require('../models/ExamPaper');
 const Hall = require('../models/Hall');
 const Faculty = require('../models/Faculty');
 const FacultyAvailability = require('../models/FacultyAvailability');
 const SeatingPlan = require('../models/SeatingPlan');
 const Invigilation = require('../models/Invigilation');
+const Subject = require('../models/Subject');
+const ProgrammeCourse = require('../models/ProgrammeCourse');
 
 // @desc    Get Admin Dashboard Stats dynamically from MongoDB
 // @route   GET /api/dashboard/stats
